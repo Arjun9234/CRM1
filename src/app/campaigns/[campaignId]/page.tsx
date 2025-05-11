@@ -8,11 +8,24 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ArrowLeft, Users, CheckCircle, XCircle, Target, CalendarDays, MessageSquare, SlidersHorizontal, AlertTriangle, BarChart, Edit3, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { ArrowLeft, Users, CheckCircle, XCircle, Target, CalendarDays, MessageSquare, SlidersHorizontal, AlertTriangle, BarChart, Edit3, Trash2, Loader2 } from "lucide-react";
 import type { Campaign, SegmentRule } from "@/lib/types";
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
 import { format } from 'date-fns';
+import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
 
 async function fetchCampaign(campaignId: string): Promise<Campaign> {
   const response = await fetch(`/api/campaigns/${campaignId}`);
@@ -22,6 +35,17 @@ async function fetchCampaign(campaignId: string): Promise<Campaign> {
   }
   return response.json();
 }
+
+async function deleteCampaign(campaignId: string): Promise<void> {
+  const response = await fetch(`/api/campaigns/${campaignId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || `Failed to delete campaign ${campaignId}`);
+  }
+}
+
 
 const statusBadgeVariant = (status: Campaign['status']) => {
     switch (status) {
@@ -37,13 +61,42 @@ const statusBadgeVariant = (status: Campaign['status']) => {
 export default function CampaignDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const campaignId = params.campaignId as string;
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const { data: campaign, isLoading, error, isError } = useQuery<Campaign>({
     queryKey: ['campaign', campaignId],
     queryFn: () => fetchCampaign(campaignId),
-    enabled: !!campaignId, // Only run query if campaignId is available
+    enabled: !!campaignId, 
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteCampaign,
+    onSuccess: () => {
+      toast({
+        title: "Campaign Deleted",
+        description: `Campaign "${campaign?.name}" has been successfully deleted.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      router.push('/dashboard');
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error Deleting Campaign",
+        description: error.message,
+        variant: "destructive",
+      });
+      setIsDeleteDialogOpen(false);
+    },
+  });
+
+  const handleDeleteCampaign = () => {
+    if (campaignId) {
+      deleteMutation.mutate(campaignId);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -107,12 +160,32 @@ export default function CampaignDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" disabled>
+            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)}>
                 <Edit3 className="mr-2 h-4 w-4"/> Edit
             </Button>
-             <Button variant="destructive" disabled>
-                <Trash2 className="mr-2 h-4 w-4"/> Delete
-            </Button>
+            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+              <AlertDialogTrigger asChild>
+                 <Button variant="destructive">
+                    <Trash2 className="mr-2 h-4 w-4"/> Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete the campaign
+                    "{campaign.name}".
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDeleteCampaign} disabled={deleteMutation.isPending}>
+                    {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
         
@@ -230,3 +303,4 @@ export default function CampaignDetailPage() {
     </AppLayout>
   );
 }
+
