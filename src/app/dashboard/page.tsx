@@ -57,7 +57,11 @@ export default function DashboardPage() {
     };
   }, [sortedCampaigns]);
 
-  const campaignsForDisplay = useMemo(() => sortedCampaigns.slice(0, 6), [sortedCampaigns]);
+  // Show all campaigns
+  const campaignsForDisplay = sortedCampaigns;
+  // For the chart, we might still want to limit to a certain number for readability
+  const campaignsForChart = useMemo(() => sortedCampaigns.slice(0, 6), [sortedCampaigns]);
+
 
   if (isLoading) {
     return (
@@ -119,15 +123,16 @@ export default function DashboardPage() {
 
       <div className="grid gap-6 lg:grid-cols-3 mb-8">
         <div className="lg:col-span-2">
-          <CampaignPerformanceChart campaigns={campaignsForDisplay} /> 
+          <CampaignPerformanceChart campaigns={campaignsForChart} /> 
         </div>
         <div>
           <MarketingTipsWidget />
         </div>
       </div>
       
-      <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-foreground mb-6">Your Campaigns ({campaignsForDisplay.length} most recent)</h2>
+      <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-foreground mb-6">Your Campaigns ({campaignsForDisplay.length})</h2>
       <CampaignList campaigns={campaignsForDisplay} /> 
     </AppLayout>
   );
 }
+
