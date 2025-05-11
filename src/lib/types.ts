@@ -41,3 +41,33 @@ export interface DeliveryReceipt {
   status: 'SENT' | 'FAILED';
   timestamp: string;
 }
+
+// Customer related types
+export type CustomerStatus = 'Active' | 'Lead' | 'Inactive' | 'New';
+export interface Customer {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
+  company?: string;
+  totalSpend: number;
+  lastContact: string; // ISO date string
+  status: CustomerStatus;
+  createdAt: string; // ISO date string
+  tags?: string[];
+}
+
+// Task related types
+export type TaskStatus = 'To Do' | 'In Progress' | 'Completed' | 'Blocked';
+export type TaskPriority = 'High' | 'Medium' | 'Low';
+export interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  dueDate: string; // ISO date string
+  status: TaskStatus;
+  priority: TaskPriority;
+  assignedTo?: string; // User name or ID for simplicity
+  createdAt: string; // ISO date string
+  tags?: string[];
+}
