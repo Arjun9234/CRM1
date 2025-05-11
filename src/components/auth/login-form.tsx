@@ -8,20 +8,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { ChromeIcon } from 'lucide-react'; // Using ChromeIcon as a stand-in for Google G
+import { ChromeIcon, Loader2 } from 'lucide-react'; 
 import { useToast } from "@/hooks/use-toast";
 
 
 export function LoginForm() {
-  const { login } = useAuth();
+  const { login, signInWithGoogle } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isEmailLoading, setIsEmailLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const { toast } = useToast();
 
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !name) {
       toast({
@@ -31,7 +32,7 @@ export function LoginForm() {
       });
       return;
     }
-    setIsLoading(true);
+    setIsEmailLoading(true);
     try {
       await login(name, email); // Mock login
       toast({
@@ -40,14 +41,45 @@ export function LoginForm() {
       });
       router.replace('/dashboard');
     } catch (error) {
-      console.error("Login failed", error);
+      console.error("Email login failed", error);
       toast({
         title: "Login Failed",
         description: "An error occurred during login. Please try again.",
         variant: "destructive",
       });
-      setIsLoading(false);
+      setIsEmailLoading(false);
     }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setIsGoogleLoading(true);
+    try {
+      await signInWithGoogle();
+      // Navigation to '/dashboard' will be handled by the AuthProvider's onAuthStateChanged listener
+      // or the effect in src/app/page.tsx if already on that page.
+      // We can show a pending toast here that gets updated or dismissed by other parts of the app
+      // For now, successful sign-in will trigger user state change and redirect.
+      toast({
+        title: "Signing in with Google...",
+        description: "Please wait while we authenticate you.",
+      });
+    } catch (error: any) {
+      console.error("Google Sign-In failed", error);
+      let errorMessage = "An error occurred during Google Sign-In. Please try again.";
+      if (error.code === 'auth/popup-closed-by-user') {
+        errorMessage = "Google Sign-In was cancelled.";
+      } else if (error.code === 'auth/network-request-failed') {
+        errorMessage = "Network error during Google Sign-In. Please check your connection.";
+      }
+      toast({
+        title: "Google Sign-In Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      setIsGoogleLoading(false);
+    }
+    // No need to setIsGoogleLoading(false) on success here, as page will redirect or user state updates.
+    // It's set to false in the catch block.
   };
 
   return (
@@ -57,7 +89,7 @@ export function LoginForm() {
         <CardDescription>Sign in to access your EngageSphere dashboard</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleEmailSubmit} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="name">Full Name</Label>
             <Input 
@@ -66,7 +98,7 @@ export function LoginForm() {
               value={name} 
               onChange={(e) => setName(e.target.value)} 
               required 
-              disabled={isLoading}
+              disabled={isEmailLoading || isGoogleLoading}
             />
           </div>
           <div className="space-y-2">
@@ -78,11 +110,11 @@ export function LoginForm() {
               value={email} 
               onChange={(e) => setEmail(e.target.value)} 
               required 
-              disabled={isLoading}
+              disabled={isEmailLoading || isGoogleLoading}
             />
           </div>
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? 'Signing in...' : 'Sign In with Email'}
+          <Button type="submit" className="w-full" disabled={isEmailLoading || isGoogleLoading}>
+            {isEmailLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in...</> : 'Sign In with Email'}
           </Button>
         </form>
         <div className="my-6 flex items-center">
@@ -90,13 +122,13 @@ export function LoginForm() {
           <span className="mx-4 text-xs uppercase text-muted-foreground">Or</span>
           <div className="flex-grow border-t border-muted"></div>
         </div>
-        <Button variant="outline" className="w-full" onClick={handleSubmit} disabled={isLoading}>
-          <ChromeIcon className="mr-2 h-5 w-5" /> 
-          Sign In with Google (Simulated)
+        <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={isGoogleLoading || isEmailLoading}>
+          {isGoogleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ChromeIcon className="mr-2 h-5 w-5" /> }
+          {isGoogleLoading ? 'Processing Google Sign-In...' : 'Sign In with Google'}
         </Button>
       </CardContent>
       <CardFooter className="text-center text-sm text-muted-foreground">
-        <p>This is a simulated login. No actual Google OAuth is performed.</p>
+        <p>Email login is simulated. Google Sign-In uses Firebase.</p>
       </CardFooter>
     </Card>
   );

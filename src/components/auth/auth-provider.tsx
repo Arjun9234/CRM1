@@ -3,8 +3,8 @@
 
 import type { User as AppUser } from '@/lib/types'; // Renamed to avoid conflict with firebase User
 import React, { createContext, useState, useEffect, useCallback } from 'react';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { auth } from '@/lib/firebase'; // Assuming your firebase setup is here
+import { onAuthStateChanged, User as FirebaseUser, signInWithPopup } from 'firebase/auth';
+import { auth, googleProvider } from '@/lib/firebase'; // Assuming your firebase setup is here
 
 interface AuthContextType {
   user: AppUser | null;
@@ -12,7 +12,8 @@ interface AuthContextType {
   // login and logout will be simplified as Firebase handles actual auth state
   // For mock:
   login: (name: string, email: string) => Promise<void>; // Kept for existing mock login form
-  logout: () => Promise<void>; // Kept for existing mock logout
+  logout: () => Promise<void>; 
+  signInWithGoogle: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,10 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           name: firebaseUser.displayName,
           email: firebaseUser.email,
           image: firebaseUser.photoURL,
-          createdAt: firebaseUser.metadata.creationTime, // Get creation time
-          // bio and company would typically come from a Firestore user profile document,
-          // not directly from Firebase Auth user object, unless stored in custom claims or similar.
-          // For simplicity, they are not populated from Firebase Auth here but can be set by mock login.
+          createdAt: firebaseUser.metadata.creationTime, 
         };
         setUser(appUser);
         localStorage.removeItem(MOCK_AUTH_STORAGE_KEY); // Clear mock auth if Firebase auth is active
@@ -65,7 +63,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (name: string, email: string) => {
     setIsLoading(true);
     // This simulates a non-Firebase login, storing to localStorage.
-    // In a real app, this would be replaced by Firebase signInWithEmailAndPassword, GoogleSignIn, etc.
     await new Promise(resolve => setTimeout(resolve, 500));
     const mockUser: AppUser = { 
       id: `mock_${Date.now().toString()}`, // Mock ID
@@ -81,25 +78,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  // Mock logout function
+  const signInWithGoogle = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      await signInWithPopup(auth, googleProvider);
+      // onAuthStateChanged will handle setting the user and clearing mock auth
+    } catch (error) {
+      console.error("Google Sign-In failed", error);
+      setIsLoading(false); // Ensure loading is stopped on error
+      throw error; // Re-throw to be caught by the calling component
+    }
+    // setIsLoading(false) will be handled by onAuthStateChanged listener
+  }, []);
+
+  // Logout function
   const logout = useCallback(async () => {
     setIsLoading(true);
-    // If Firebase auth was used, this should call firebase.auth().signOut()
-    // For now, it just clears the mock user.
     try {
-        await auth.signOut(); // Attempt Firebase sign out
+        await auth.signOut(); 
     } catch (e) {
-        console.error("Firebase sign out error (might be okay if not signed in with Firebase):", e);
+        console.error("Firebase sign out error:", e);
     }
     setUser(null);
     localStorage.removeItem(MOCK_AUTH_STORAGE_KEY);
-    setIsLoading(false);
+    // setIsLoading(false) will be handled by onAuthStateChanged listener, 
+    // but good to ensure it's set if onAuthStateChanged doesn't fire quickly enough
+    // or if there was no Firebase user to begin with.
+    // However, onAuthStateChanged should fire with null, setting isLoading to false.
+    // For robustness, we can ensure it's set here if not relying purely on the listener for this specific state change.
+    // Let's rely on onAuthStateChanged for consistency. If issues arise, this can be revisited.
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, signInWithGoogle }}>
       {children}
     </AuthContext.Provider>
   );
 }
-
