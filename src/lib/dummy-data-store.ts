@@ -98,44 +98,56 @@ const initialDummyCampaigns: Campaign[] = [
 let mutableDummyCampaigns: Campaign[] = JSON.parse(JSON.stringify(initialDummyCampaigns));
 
 export function getInMemoryDummyCampaigns(): Campaign[] {
-  // Return a deep copy to prevent direct mutation of the store from outside
-  return JSON.parse(JSON.stringify(mutableDummyCampaigns.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())));
+  // Filter out any campaign with the specific name "Indo-Pak War Game"
+  // This ensures that if it was added dynamically, it won't be shown.
+  // The initialDummyCampaigns list itself does not contain it.
+  const filteredCampaigns = mutableDummyCampaigns.filter(
+    campaign => campaign.name !== "Indo-Pak War Game"
+  );
+  // Return a deep copy of the filtered and sorted campaigns
+  return JSON.parse(JSON.stringify(filteredCampaigns.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())));
 }
 
 export function findInMemoryDummyCampaign(id: string): Campaign | undefined {
   const campaign = mutableDummyCampaigns.find(c => c.id === id);
+  if (campaign && campaign.name === "Indo-Pak War Game") {
+      return undefined; // Do not return the filtered out campaign
+  }
   return campaign ? JSON.parse(JSON.stringify(campaign)) : undefined;
 }
 
 export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
-  // Ensure the campaign being added has all necessary fields, especially those calculated by API on creation
-  const newCampaignToAdd: Campaign = {
-    ...campaign,
-    // sentCount and failedCount might be 0 if status is not 'Sent' at creation
-    // or calculated if status is 'Sent' (as done in API POST)
-    // The 'campaign' object passed here should ideally already have these from the API response.
-  };
-  mutableDummyCampaigns.unshift(newCampaignToAdd); // Add to the beginning for "most recent" behavior
+  const newCampaignToAdd: Campaign = { ...campaign };
+  // Prevent adding the specific campaign name if it's attempted through this function
+  if (newCampaignToAdd.name === "Indo-Pak War Game") {
+    console.warn("Attempted to add a filtered campaign name. Operation skipped.");
+    // Return the original campaign or handle as an error/noop
+    return campaign; 
+  }
+  mutableDummyCampaigns.unshift(newCampaignToAdd); 
   return JSON.parse(JSON.stringify(newCampaignToAdd));
 }
 
 export function updateInMemoryDummyCampaign(id: string, payload: CampaignUpdatePayload): Campaign | null {
   const index = mutableDummyCampaigns.findIndex(c => c.id === id);
   if (index > -1) {
-    // Merge existing campaign with payload
+    // Prevent updating a campaign to the filtered name
+    if (payload.name === "Indo-Pak War Game" && mutableDummyCampaigns[index].name !== "Indo-Pak War Game") {
+        console.warn("Attempted to update campaign to a filtered name. Name update skipped.");
+        delete payload.name; // Remove the problematic name change from the payload
+    }
+
     const updatedCampaignData = { 
         ...mutableDummyCampaigns[index], 
         ...payload, 
         updatedAt: new Date().toISOString() 
     };
 
-    // Simulate sent/failed counts if status changes to 'Sent' and they aren't provided
-    // Also consider if audienceSize changes
     if (payload.status === 'Sent') {
         const audienceSize = payload.audienceSize !== undefined ? payload.audienceSize : mutableDummyCampaigns[index].audienceSize;
         if (payload.sentCount === undefined || payload.failedCount === undefined || payload.audienceSize !== undefined) {
           if (audienceSize > 0) {
-            const successRate = Math.random() * 0.25 + 0.7; // 70-95% success
+            const successRate = Math.random() * 0.25 + 0.7; 
             updatedCampaignData.sentCount = Math.floor(audienceSize * successRate);
             updatedCampaignData.failedCount = audienceSize - updatedCampaignData.sentCount;
           } else {
@@ -144,12 +156,15 @@ export function updateInMemoryDummyCampaign(id: string, payload: CampaignUpdateP
           }
         }
     } else if (payload.status && payload.status !== 'Sent') {
-        // If status changes to something other than 'Sent', reset counts if not explicitly provided
         if(payload.sentCount === undefined) updatedCampaignData.sentCount = 0;
         if(payload.failedCount === undefined) updatedCampaignData.failedCount = 0;
     }
     
     mutableDummyCampaigns[index] = updatedCampaignData as Campaign;
+    // If the updated campaign is the one to be filtered, don't return it from this function either
+    if (mutableDummyCampaigns[index].name === "Indo-Pak War Game") {
+        return null;
+    }
     return JSON.parse(JSON.stringify(mutableDummyCampaigns[index]));
   }
   return null;
@@ -161,15 +176,16 @@ export function deleteInMemoryDummyCampaign(id: string): boolean {
   return mutableDummyCampaigns.length < initialLength;
 }
 
-// Function to reset to initial state (useful for testing or specific demo scenarios)
 export function resetInMemoryDummyCampaigns() {
+  // initialDummyCampaigns is already clean (does not contain "Indo-Pak War Game")
   mutableDummyCampaigns = JSON.parse(JSON.stringify(initialDummyCampaigns));
 }
 
-// Ensure all initial dummy campaigns have updatedAt
 initialDummyCampaigns.forEach(c => {
     if (!c.updatedAt) {
         c.updatedAt = c.createdAt;
     }
 });
-resetInMemoryDummyCampaigns(); // Initialize mutable store with potentially updated initial data
+resetInMemoryDummyCampaigns();
+
+    
