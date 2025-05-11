@@ -37,7 +37,7 @@ const prompt = ai.definePrompt({
   name: 'generateMarketingTipsPrompt',
   input: {schema: GenerateMarketingTipsInputSchema},
   output: {schema: GenerateMarketingTipsOutputSchema},
-  prompt: `You are a marketing expert. Generate {{count}} concise and actionable marketing tips suitable for a CRM user looking to improve their customer engagement campaigns.
+  prompt: `You are a marketing expert. Generate {{count}} concise and actionable marketing tips suitable for an EngageSphere user looking to improve their customer engagement campaigns.
   Focus on tips related to personalization, segmentation, A/B testing, timing, and calls to action.
   Each tip should be a single sentence or two.
 

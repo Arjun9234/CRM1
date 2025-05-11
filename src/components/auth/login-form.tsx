@@ -53,8 +53,8 @@ export function LoginForm() {
   return (
     <Card className="w-full max-w-md shadow-2xl">
       <CardHeader className="text-center">
-        <CardTitle className="text-3xl font-bold text-primary">CRM</CardTitle>
-        <CardDescription>Sign in to access your CRM dashboard</CardDescription>
+        <CardTitle className="text-3xl font-bold text-primary">EngageSphere</CardTitle>
+        <CardDescription>Sign in to access your EngageSphere dashboard</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">

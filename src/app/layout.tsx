@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'CRM',
-  description: 'A Mini CRM Platform by Firebase Studio',
+  title: 'EngageSphere',
+  description: 'EngageSphere: Your All-in-One Customer Engagement Platform',
 };
 
 export default function RootLayout({

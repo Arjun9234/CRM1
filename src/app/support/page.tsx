@@ -84,7 +84,7 @@ export default function SupportPage() {
                 Frequently Asked Questions (FAQ)
                 </CardTitle>
                 <CardDescription>
-                Find answers to common questions about CRM.
+                Find answers to common questions about EngageSphere.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -122,7 +122,7 @@ export default function SupportPage() {
               <BookOpen className="h-16 w-16 text-muted-foreground mb-4" />
               <h2 className="text-2xl font-semibold text-muted-foreground">Knowledge Base Coming Soon!</h2>
               <p className="text-muted-foreground mt-2 max-w-md">
-                We're building a comprehensive library of articles and guides to help you get the most out of CRM.
+                We're building a comprehensive library of articles and guides to help you get the most out of EngageSphere.
               </p>
             </div>
           </CardContent>

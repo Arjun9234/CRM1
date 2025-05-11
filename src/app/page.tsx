@@ -23,7 +23,7 @@ export default function HomePage() {
   return (
     <div className="flex h-screen w-full items-center justify-center bg-background">
       <div className="space-y-4 p-8 rounded-lg shadow-xl bg-card w-full max-w-md text-center">
-        <h1 className="text-3xl font-bold text-primary">CRM</h1>
+        <h1 className="text-3xl font-bold text-primary">EngageSphere</h1>
         <p className="text-muted-foreground">Loading your experience...</p>
         <div className="space-y-2 pt-4">
           <Skeleton className="h-10 w-full rounded-md" />
