@@ -36,10 +36,23 @@ async function updateCampaign(campaignId: string, payload: CampaignUpdatePayload
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Failed to update campaign');
+    let errorData;
+    try {
+      errorData = await response.json();
+    } catch (e) {
+      const errorText = await response.text();
+      console.error("Server returned non-JSON error response during update:", response.status, errorText);
+      throw new Error(`Server error: ${response.status}. Failed to update campaign.`);
+    }
+    throw new Error(errorData.message || `Failed to update campaign (status: ${response.status})`);
   }
-  return response.json();
+  
+  try {
+    return await response.json();
+  } catch (e) {
+    console.error("Server returned OK, but with non-JSON success response during update:", response.status, await response.text());
+    throw new Error("Received an invalid success response from the server after update.");
+  }
 }
 
 interface EditCampaignFormProps {
@@ -56,8 +69,8 @@ const symbolToShortCodeMap: Record<string, string> = {
   '>=': 'gte',
   '<=': 'lte',
   'contains': 'contains',
-  'starts_with': 'startsWith',
-  'endswith': 'endsWith',
+  'startsWith': 'startsWith', // Consistent key
+  'endsWith': 'endsWith',     // Consistent key
 };
 
 const campaignStatuses: Campaign['status'][] = ['Draft', 'Scheduled', 'Sent', 'Archived', 'Cancelled', 'Failed'];
@@ -91,19 +104,14 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
 
   const mutation = useMutation({
     mutationFn: (payload: CampaignUpdatePayload) => updateCampaign(existingCampaign.id, payload),
-    onSuccess: async (data) => { // Make onSuccess async
+    onSuccess: (data: Campaign) => { 
       toast({
         title: "Campaign Updated!",
         description: `Campaign "${data.name || campaignName}" has been successfully updated.`,
       });
-      // Invalidate queries to mark them as stale
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       queryClient.invalidateQueries({ queryKey: ['campaign', existingCampaign.id] });
       queryClient.invalidateQueries({ queryKey: ['campaign', existingCampaign.id, 'edit'] });
-
-      // Explicitly refetch the main campaigns list for the dashboard.
-      // This ensures the data is fresh before navigating.
-      await queryClient.refetchQueries({ queryKey: ['campaigns'], exact: true });
       
       router.push("/dashboard");
     },
@@ -117,10 +125,18 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
   });
 
   const handleNlpRuleGenerated = (ruleText: string) => {
-    const parts = ruleText.match(/(\w+)\s*([<>=!]+|contains|starts_with|ends_with)\s*(.+)/i);
+    const parts = ruleText.match(/(\w+)\s*([<>=!≤≥≠]+|contains|starts_with|endswith|startsWith|endsWith)\s*(.+)/i);
     if (parts && parts.length === 4) {
-        const parsedOperator = parts[2].trim().toLowerCase();
-        const shortCodeOperator = symbolToShortCodeMap[parsedOperator] || parsedOperator;
+        const rawOperator = parts[2].trim().toLowerCase();
+        const operatorMapping: Record<string, string> = {
+            ...symbolToShortCodeMap,
+            '≤': 'lte',
+            '≥': 'gte',
+            '≠': 'neq',
+            'starts_with': 'startsWith', 
+            'ends_with': 'endsWith',
+        };
+        const shortCodeOperator = operatorMapping[rawOperator] || rawOperator;
         
         const newRule: SegmentRule = {
             id: Date.now().toString(),

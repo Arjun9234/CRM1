@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { CampaignCreationPayload, SegmentRule } from "@/lib/types";
+import type { CampaignCreationPayload, SegmentRule, Campaign } from "@/lib/types";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-async function createCampaign(payload: CampaignCreationPayload): Promise<any> {
+async function createCampaign(payload: CampaignCreationPayload): Promise<Campaign> {
   const response = await fetch('/api/campaigns', {
     method: 'POST',
     headers: {
@@ -36,10 +36,26 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<any> {
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Failed to create campaign');
+    let errorData;
+    try {
+      errorData = await response.json(); // Try to parse as JSON
+    } catch (e) {
+      // If parsing as JSON fails, it means the response was not JSON (e.g., HTML error page)
+      const errorText = await response.text(); 
+      console.error("Server returned non-JSON error response:", response.status, errorText);
+      // Provide a more generic error or attempt to extract info from errorText if feasible
+      throw new Error(`Server error: ${response.status}. Failed to create campaign.`);
+    }
+    throw new Error(errorData.message || `Failed to create campaign (status: ${response.status})`);
   }
-  return response.json();
+
+  try {
+    return await response.json();
+  } catch (e) {
+    // This case should be rare if the server API route for success always returns JSON
+    console.error("Server returned OK, but with non-JSON success response:", response.status, await response.text());
+    throw new Error("Received an invalid success response from the server.");
+  }
 }
 
 const symbolToShortCodeMap: Record<string, string> = {
@@ -52,8 +68,8 @@ const symbolToShortCodeMap: Record<string, string> = {
   '>=': 'gte',
   '<=': 'lte',
   'contains': 'contains',
-  'startsWith': 'startsWith', // Note: was 'starts_with' in some places, ensuring consistency
-  'endsWith': 'endsWith',   // Note: was 'ends_with' in some places
+  'startsWith': 'startsWith', 
+  'endsWith': 'endsWith',   
 };
 
 
@@ -73,14 +89,13 @@ export function CreateCampaignForm() {
 
   const mutation = useMutation({
     mutationFn: createCampaign,
-    onSuccess: async (data) => { // Made onSuccess async
+    onSuccess: (data: Campaign) => { 
       toast({
         title: "Campaign Created!",
         description: `${data.name || campaignName} has been successfully scheduled.`,
       });
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-      // Explicitly refetch campaigns for the dashboard to ensure it has the latest data
-      await queryClient.refetchQueries({ queryKey: ['campaigns'], exact: true });
+      queryClient.invalidateQueries({ queryKey: ['campaign', data.id] });
       router.push("/dashboard");
     },
     onError: (error: Error) => {
@@ -103,8 +118,9 @@ export function CreateCampaignForm() {
             '≤': 'lte',
             '≥': 'gte',
             '≠': 'neq',
-            'startswith': 'startsWith',
-            'endswith': 'endsWith',
+            // ensure client-side parsing consistency
+            'starts_with': 'startsWith', 
+            'ends_with': 'endsWith',
         };
         const shortCodeOperator = operatorMapping[rawOperator] || rawOperator;
 
@@ -265,3 +281,4 @@ export function CreateCampaignForm() {
     </form>
   );
 }
+

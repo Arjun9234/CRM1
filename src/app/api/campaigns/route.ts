@@ -107,9 +107,15 @@ export async function POST(request: Request) {
     return NextResponse.json(createdCampaignResponse, { status: 201 });
 
   } catch (error) {
-    console.error("Error creating campaign in Firebase:", error);
-    // Attempt to remove from dummy store if Firebase add failed? Or leave it?
-    // For now, focus on the error being Firebase related.
-    return NextResponse.json({ message: 'Failed to create campaign', error: (error as Error).message }, { status: 500 });
+    console.error("Error creating campaign:", error);
+    let errorMessage = 'An unexpected error occurred while creating the campaign.';
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    }
+    // Ensure a JSON response even in case of unexpected errors
+    return NextResponse.json({ message: 'Failed to create campaign', error: errorMessage }, { status: 500 });
   }
 }
+
