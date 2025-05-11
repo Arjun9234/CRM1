@@ -26,64 +26,84 @@ const campaignCreationSchema = z.object({
 
 
 export async function GET() {
-  let firebaseCampaigns: Campaign[] = [];
-  let firebaseError = false;
+  try { // Top-level try-catch to ensure JSON response even on unexpected errors
+    let firebaseCampaigns: Campaign[] = [];
+    let firebaseError = false;
 
-  try {
-    if (!db) { 
-      console.warn("GET /api/campaigns: Firestore database is not initialized. Likely Firebase config issue.");
-      firebaseError = true;
-      // Proceed to return dummy data if Firebase is down
-    } else {
-      const campaignsCol = collection(db, 'campaigns');
-      const q = query(campaignsCol, orderBy('createdAt', 'desc'));
-      const campaignSnapshot = await getDocs(q);
-      
-      if (!campaignSnapshot.empty) {
-        firebaseCampaigns = campaignSnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            name: data.name,
-            segmentName: data.segmentName,
-            rules: data.rules,
-            ruleLogic: data.ruleLogic,
-            message: data.message,
-            status: data.status,
-            audienceSize: data.audienceSize,
-            sentCount: data.sentCount,
-            failedCount: data.failedCount,
-            createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
-            updatedAt: (data.updatedAt as Timestamp)?.toDate().toISOString(),
-          } as Campaign;
-        });
+    try { // Inner try-catch for Firebase specific operations
+      if (!db) { 
+        console.warn("GET /api/campaigns: Firestore database is not initialized. Likely Firebase config issue.");
+        firebaseError = true;
+      } else {
+        const campaignsCol = collection(db, 'campaigns');
+        const q = query(campaignsCol, orderBy('createdAt', 'desc'));
+        const campaignSnapshot = await getDocs(q);
+        
+        if (!campaignSnapshot.empty) {
+          firebaseCampaigns = campaignSnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              name: data.name,
+              segmentName: data.segmentName,
+              rules: data.rules,
+              ruleLogic: data.ruleLogic,
+              message: data.message,
+              status: data.status,
+              audienceSize: data.audienceSize,
+              sentCount: data.sentCount,
+              failedCount: data.failedCount,
+              createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
+              updatedAt: (data.updatedAt as Timestamp)?.toDate().toISOString(),
+            } as Campaign;
+          });
+        }
       }
+    } catch (error) {
+      console.error("Error fetching campaigns from Firebase (GET /api/campaigns):", error);
+      firebaseError = true; 
     }
-  } catch (error) {
-    console.error("Error fetching campaigns from Firebase (GET /api/campaigns):", error);
-    firebaseError = true; 
+
+    const inMemoryCampaigns = getInMemoryDummyCampaigns();
+    const combinedCampaignsMap = new Map<string, Campaign>();
+
+    // Add in-memory campaigns first, so Firebase data (if available) can overwrite
+    inMemoryCampaigns.forEach(campaign => {
+      combinedCampaignsMap.set(campaign.id, campaign);
+    });
+
+    firebaseCampaigns.forEach(campaign => {
+      combinedCampaignsMap.set(campaign.id, campaign); // Firebase data overwrites dummy if IDs match
+    });
+    
+    const finalCampaignList = Array.from(combinedCampaignsMap.values())
+                                   .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    if (firebaseError && firebaseCampaigns.length === 0) {
+       console.warn("Firebase error during GET /api/campaigns. Merged results will primarily use in-memory data if Firebase fetch failed or DB is uninitialized.");
+    }
+    
+    return NextResponse.json(finalCampaignList);
+
+  } catch (error: any) {
+    console.error("--- CRITICAL UNHANDLED ERROR IN GET /api/campaigns ---");
+    console.error("Timestamp:", new Date().toISOString());
+    console.error("Error Message:", error.message);
+    console.error("Error Stack:", error.stack);
+    if (typeof error === 'object' && error !== null && !(error instanceof Error)) {
+        try {
+            console.error("Full raw error object (attempting stringify):", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+        } catch (e) {
+            console.error("Full raw error object (unserializable):", error);
+        }
+    }
+    console.error("--- End of Critical Error in GET /api/campaigns ---");
+    
+    return NextResponse.json(
+      { message: 'Failed to fetch campaigns due to an unexpected server error.', error: error.message || 'Unknown server error' },
+      { status: 500 }
+    );
   }
-
-  const inMemoryCampaigns = getInMemoryDummyCampaigns();
-
-  const combinedCampaignsMap = new Map<string, Campaign>();
-
-  inMemoryCampaigns.forEach(campaign => {
-    combinedCampaignsMap.set(campaign.id, campaign);
-  });
-
-  firebaseCampaigns.forEach(campaign => {
-    combinedCampaignsMap.set(campaign.id, campaign);
-  });
-  
-  const finalCampaignList = Array.from(combinedCampaignsMap.values())
-                                 .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-  if (firebaseError && firebaseCampaigns.length === 0) {
-     console.warn("Firebase error during GET /api/campaigns. Merged results will primarily use in-memory data.");
-  }
-  
-  return NextResponse.json(finalCampaignList);
 }
 
 export async function POST(request: Request) {
@@ -98,11 +118,13 @@ export async function POST(request: Request) {
     let body;
     try {
         body = await request.json();
-        console.log("POST /api/campaigns: Parsed request body:", JSON.stringify(body, null, 2).substring(0, 500) + (JSON.stringify(body, null, 2).length > 500 ? "..." : ""));
-    } catch (jsonError) {
-        console.error("POST /api/campaigns: Invalid JSON in request body:", jsonError);
-        return NextResponse.json({ message: 'Invalid JSON payload provided.', error: (jsonError as Error).message }, { status: 400 });
+    } catch (jsonError: any) {
+        console.error("POST /api/campaigns: Invalid JSON in request body:", jsonError.message);
+        return NextResponse.json({ message: 'Invalid JSON payload provided.', error: jsonError.message }, { status: 400 });
     }
+    
+    // Log the raw body for debugging, before validation
+    console.log("POST /api/campaigns: Parsed request body:", JSON.stringify(body, null, 2).substring(0, 1000) + (JSON.stringify(body, null, 2).length > 1000 ? "..." : ""));
     
     const validationResult = campaignCreationSchema.safeParse(body);
     if (!validationResult.success) {
@@ -116,14 +138,7 @@ export async function POST(request: Request) {
 
     const { name, segmentName, rules, ruleLogic, message, status, audienceSize } = validationResult.data;
 
-    const dataToSave: Omit<CampaignCreationPayload, 'audienceSize' | 'status'> & { 
-        audienceSize: number; 
-        status: Campaign['status']; 
-        createdAt: Timestamp; 
-        sentCount: number; 
-        failedCount: number; 
-        segmentName?: string;
-    } = {
+    const dataToSave = {
         name,
         rules,
         ruleLogic,
@@ -131,16 +146,14 @@ export async function POST(request: Request) {
         status,
         audienceSize,
         createdAt: Timestamp.now(),
-        sentCount: 0,
-        failedCount: 0,
+        sentCount: 0, // Initialize sentCount
+        failedCount: 0, // Initialize failedCount
+        ...(segmentName && { segmentName }), // Conditionally add segmentName
     };
-
-    if (segmentName) {
-        dataToSave.segmentName = segmentName;
-    }
     
+    // Simulate sending if status is 'Sent'
     if (dataToSave.status === 'Sent' && dataToSave.audienceSize > 0) {
-        const successRate = Math.random() * 0.20 + 0.75;
+        const successRate = Math.random() * 0.20 + 0.75; // 75-95% success
         dataToSave.sentCount = Math.floor(dataToSave.audienceSize * successRate);
         dataToSave.failedCount = dataToSave.audienceSize - dataToSave.sentCount;
     } else if (dataToSave.status === 'Sent' && dataToSave.audienceSize === 0) {
@@ -169,10 +182,11 @@ export async function POST(request: Request) {
     };
 
     try {
-      addInMemoryDummyCampaign(createdCampaignResponse);
+      addInMemoryDummyCampaign(createdCampaignResponse); // Also add to dummy store for consistency
       console.log("POST /api/campaigns: Campaign added to in-memory store.");
     } catch (inMemoryError) {
       console.error("Error adding campaign to in-memory store after Firebase success (POST /api/campaigns):", inMemoryError);
+      // Not re-throwing, as Firebase succeeded. This is a secondary concern.
     }
     
     console.log("POST /api/campaigns: Successfully created campaign, returning 201 response.");
@@ -192,7 +206,6 @@ export async function POST(request: Request) {
         errorMessage = 'Invalid data format for campaign creation.';
         errorDetails = error.flatten().fieldErrors;
     } else if (error instanceof SyntaxError && error.message.includes("JSON")) {
-        // This case should be caught earlier by the explicit body parsing try-catch
         errorMessage = 'Invalid JSON payload provided (caught by main try-catch).';
         errorDetails = { syntaxErrorMessage: error.message };
     } else if (error instanceof Error) {
@@ -215,9 +228,8 @@ export async function POST(request: Request) {
     }
     console.error("--- End of Critical Error in POST /api/campaigns ---");
     
-    // Ensure the final returned error is simple JSON to prevent issues with NextResponse.json
     let safeErrorMessageForResponse = 'An unexpected error occurred.';
-    if (typeof errorMessage === 'string' && errorMessage.length < 200) { // Keep it concise for client
+    if (typeof errorMessage === 'string' && errorMessage.length < 200) { 
         safeErrorMessageForResponse = errorMessage;
     }
 
@@ -225,3 +237,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: 'Failed to create campaign', error: safeErrorMessageForResponse, details: errorDetails }, { status: 500 });
   }
 }
+

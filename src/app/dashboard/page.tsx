@@ -18,26 +18,41 @@ import { Terminal } from "lucide-react";
 
 async function fetchCampaigns(): Promise<Campaign[]> {
   const response = await fetch('/api/campaigns', { cache: 'no-store' });
+  const responseBody = await response.text(); // Read body as text first
+
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Failed to fetch campaigns');
+    // Attempt to parse as JSON for structured error, otherwise use text
+    try {
+      const errorData = JSON.parse(responseBody);
+      throw new Error(errorData.message || `Failed to fetch campaigns (Status: ${response.status})`);
+    } catch (e) {
+      // If parsing fails, it's not JSON (likely HTML)
+      const preview = responseBody.substring(0, 500); // Limit preview length
+      // Check if the preview indicates a common Firebase issue or generic HTML
+      if (responseBody.toLowerCase().includes("firebase") && responseBody.toLowerCase().includes("error")) {
+         throw new Error(`Failed to fetch campaigns. Server returned a Firebase-related error (Status: ${response.status}). Please check Firebase configuration and API route logs. Response preview: ${preview}...`);
+      }
+      throw new Error(`Failed to fetch campaigns. Server returned non-JSON error (Status: ${response.status}). Response preview: ${preview}...`);
+    }
   }
-  return response.json();
+
+  // If response.ok, try to parse as JSON
+  try {
+    return JSON.parse(responseBody);
+  } catch (e) {
+    const preview = responseBody.substring(0, 500); // Limit preview length
+    throw new Error(`Successfully fetched campaigns (Status: ${response.status}), but failed to parse response as JSON. Response preview: ${preview}...`);
+  }
 }
 
 export default function DashboardPage() {
   const { data: campaigns = [], isLoading, error, isFetching } = useQuery<Campaign[]>({
     queryKey: ['campaigns'],
     queryFn: fetchCampaigns,
-    // The dashboard is a high-level overview, so we can afford a slightly longer stale time
-    // to reduce refetches if the user navigates away and back quickly.
-    // staleTime: 1000 * 60 * 1, // 1 minute
-    // refetchInterval: 1000 * 60 * 5, // Refetch every 5 minutes to keep data relatively fresh
   });
 
   const sortedCampaigns = useMemo(() => {
-    // Campaigns are already sorted by createdAt desc from API
-    return campaigns;
+    return [...campaigns].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [campaigns]);
 
   const { totalCampaigns, totalAudienceTargeted, totalSuccessfullySent, overallSuccessRate } = useMemo(() => {
@@ -45,7 +60,7 @@ export default function DashboardPage() {
     const tat = sortedCampaigns.reduce((sum, c) => sum + (c.audienceSize || 0), 0);
     const tss = sortedCampaigns.reduce((sum, c) => sum + (c.sentCount || 0), 0);
     const totalAttemptedForSuccessRate = sortedCampaigns
-      .filter(c => c.status === 'Sent' || c.status === 'Archived' || c.status === 'Failed') // Only count relevant statuses for success rate calculation
+      .filter(c => c.status === 'Sent' || c.status === 'Archived' || c.status === 'Failed') 
       .reduce((sum, c) => sum + (c.audienceSize || 0), 0);
     const osr = totalAttemptedForSuccessRate > 0 ? (tss / totalAttemptedForSuccessRate) * 100 : 0; 
     
@@ -57,9 +72,7 @@ export default function DashboardPage() {
     };
   }, [sortedCampaigns]);
 
-  // Show all campaigns
   const campaignsForDisplay = sortedCampaigns;
-  // For the chart, we might still want to limit to a certain number for readability
   const campaignsForChart = useMemo(() => sortedCampaigns.slice(0, 6), [sortedCampaigns]);
 
 
@@ -95,6 +108,7 @@ export default function DashboardPage() {
             <AlertTitle>Error Fetching Campaigns</AlertTitle>
             <AlertDescription>
               {(error as Error).message || "An unexpected error occurred."}
+              <p className="text-xs mt-2">Please check your internet connection and ensure the backend services (including Firebase) are correctly configured and running. If the problem persists, contact support or check server logs.</p>
             </AlertDescription>
           </Alert>
         </div>

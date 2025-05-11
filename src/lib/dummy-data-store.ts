@@ -494,6 +494,10 @@ export function findInMemoryDummyCampaign(id: string): Campaign | undefined {
 export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
   const newCampaignToAdd: Campaign = JSON.parse(JSON.stringify(campaign));
 
+  if (!newCampaignToAdd.id) { // Ensure ID is present, generate if not
+      newCampaignToAdd.id = `dummy-campaign-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  }
+
   if (!newCampaignToAdd.createdAt) {
     newCampaignToAdd.createdAt = new Date().toISOString();
   }
@@ -519,7 +523,7 @@ export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
 
   const existingIndex = campaignsDB.findIndex(c => c.id === newCampaignToAdd.id);
   if (existingIndex > -1) {
-    campaignsDB[existingIndex] = newCampaignToAdd;
+    campaignsDB[existingIndex] = newCampaignToAdd; // Update existing if ID matches (should be rare for truly "new")
   } else {
     // Add to the end to preserve initial sort order if this function is called multiple times
     campaignsDB.push(newCampaignToAdd);
@@ -535,17 +539,30 @@ export function updateInMemoryDummyCampaign(id: string, payload: CampaignUpdateP
         ...existingCampaign, 
         ...payload,         
         updatedAt: new Date().toISOString(), 
+        // Critical: Ensure these are preserved from existing and not overwritten by partial payload
         id: existingCampaign.id,
         createdAt: existingCampaign.createdAt,
-        status: payload.status || existingCampaign.status, 
-        ruleLogic: payload.ruleLogic || existingCampaign.ruleLogic,
-        rules: payload.rules || existingCampaign.rules,
+        // Optional fields from payload should only overwrite if they exist in payload
+        status: payload.status !== undefined ? payload.status : existingCampaign.status, 
+        ruleLogic: payload.ruleLogic !== undefined ? payload.ruleLogic : existingCampaign.ruleLogic,
+        rules: payload.rules !== undefined ? payload.rules : existingCampaign.rules,
+        audienceSize: payload.audienceSize !== undefined ? payload.audienceSize : existingCampaign.audienceSize,
+        sentCount: payload.sentCount !== undefined ? payload.sentCount : existingCampaign.sentCount,
+        failedCount: payload.failedCount !== undefined ? payload.failedCount : existingCampaign.failedCount,
+        segmentName: payload.segmentName !== undefined ? payload.segmentName : existingCampaign.segmentName,
+        name: payload.name !== undefined ? payload.name : existingCampaign.name,
+        message: payload.message !== undefined ? payload.message : existingCampaign.message,
+
     };
 
     const audienceSize = updatedCampaignData.audienceSize; 
     
     if (updatedCampaignData.status === 'Sent') {
-        if ( (payload.sentCount === undefined || payload.failedCount === undefined || payload.audienceSize !== undefined) && audienceSize > 0) {
+        // Only recalculate if counts are not provided OR if audience size changed and counts are now inconsistent
+        const providedSent = payload.sentCount !== undefined;
+        const providedFailed = payload.failedCount !== undefined;
+
+        if (audienceSize > 0 && (!providedSent || !providedFailed || (payload.audienceSize !== undefined && payload.audienceSize !== existingCampaign.audienceSize))) {
             const successRate = Math.random() * 0.20 + 0.75;
             updatedCampaignData.sentCount = Math.floor(audienceSize * successRate);
             updatedCampaignData.failedCount = audienceSize - updatedCampaignData.sentCount;
@@ -553,7 +570,9 @@ export function updateInMemoryDummyCampaign(id: string, payload: CampaignUpdateP
             updatedCampaignData.sentCount = 0;
             updatedCampaignData.failedCount = 0;
         }
+        // If counts were explicitly provided in payload for 'Sent' status, they are already set above
     } else if (payload.status && payload.status !== 'Sent') {
+        // If status changes to non-Sent, reset counts unless explicitly provided
         if(payload.sentCount === undefined) updatedCampaignData.sentCount = 0;
         if(payload.failedCount === undefined) updatedCampaignData.failedCount = 0;
     }
@@ -582,5 +601,3 @@ export function resetInMemoryDummyCampaigns() {
     campaignsDB = (global as any)[GLOBAL_CAMPAIGNS_KEY]; 
   }
 }
-
-```
