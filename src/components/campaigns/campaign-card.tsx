@@ -1,13 +1,15 @@
 
+
 "use client";
 
 import type { Campaign } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, CheckCircle, XCircle, Send, Target, CalendarDays } from "lucide-react";
+import { Users, CheckCircle, XCircle, Send, Target, CalendarDays, Eye } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
+import Link from "next/link";
 
 interface CampaignCardProps {
   campaign: Campaign;
@@ -107,9 +109,12 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
         )}
       </CardContent>
       <CardFooter>
-        <Button variant="link" className="text-primary p-0" disabled>View Details</Button> 
+        <Link href={`/campaigns/${campaign.id}`} passHref>
+          <Button variant="link" className="text-primary p-0">
+            <Eye className="mr-2 h-4 w-4" /> View Details
+          </Button>
+        </Link>
       </CardFooter>
     </Card>
   );
 }
-
