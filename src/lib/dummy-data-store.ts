@@ -3,7 +3,7 @@
 import type { Campaign, CampaignUpdatePayload } from '@/lib/types';
 import { subDays, addDays } from 'date-fns';
 
-// Initial state with 7 campaigns.
+// Initial state with 7 campaigns. All set to 'Sent' with simulated sent/failed counts.
 const initialDummyCampaigns: Campaign[] = [
   {
     id: "dummy-campaign-1",
@@ -16,7 +16,7 @@ const initialDummyCampaigns: Campaign[] = [
     updatedAt: subDays(new Date(), 9).toISOString(),
     status: "Sent",
     audienceSize: 150,
-    sentCount: 142,
+    sentCount: 142, // Approx 95%
     failedCount: 8,
   },
   {
@@ -30,7 +30,7 @@ const initialDummyCampaigns: Campaign[] = [
     updatedAt: subDays(new Date(), 7).toISOString(),
     status: "Sent",
     audienceSize: 75,
-    sentCount: 70,
+    sentCount: 70, // Approx 93%
     failedCount: 5,
   },
   {
@@ -44,7 +44,7 @@ const initialDummyCampaigns: Campaign[] = [
     updatedAt: subDays(new Date(), 11).toISOString(),
     status: "Sent",
     audienceSize: 200,
-    sentCount: 188,
+    sentCount: 188, // Approx 94%
     failedCount: 12,
   },
   {
@@ -61,7 +61,7 @@ const initialDummyCampaigns: Campaign[] = [
     updatedAt: subDays(new Date(), 19).toISOString(),
     status: "Sent",
     audienceSize: 500,
-    sentCount: 475,
+    sentCount: 475, // Approx 95%
     failedCount: 25,
   },
   {
@@ -73,10 +73,10 @@ const initialDummyCampaigns: Campaign[] = [
     message: "🔔 Early bird access to Holiday Specials! Don't miss out on exclusive offers.",
     createdAt: subDays(new Date(), 30).toISOString(),
     updatedAt: subDays(new Date(), 29).toISOString(),
-    status: "Scheduled", // Changed to Scheduled for variety
+    status: "Sent",
     audienceSize: 300,
-    sentCount: 0, // Not sent yet
-    failedCount: 0,
+    sentCount: 285, // Approx 95%
+    failedCount: 15,
   },
   {
     id: "dummy-campaign-6",
@@ -85,12 +85,12 @@ const initialDummyCampaigns: Campaign[] = [
     rules: [{ id: "rule1", field: "productViewed", operator: "contains", value: "gadget" }, {id: "rule2", field: "TotalSpend", operator: "gte", value: "1000"}],
     ruleLogic: "AND",
     message: "🚀 Discover our latest tech innovation! Pre-order now and get an exclusive discount.",
-    createdAt: subDays(new Date(), 2).toISOString(), // More recent
+    createdAt: subDays(new Date(), 2).toISOString(), 
     updatedAt: subDays(new Date(), 1).toISOString(),
-    status: "Draft", // Changed to Draft
+    status: "Sent", 
     audienceSize: 250,
-    sentCount: 0,
-    failedCount: 0,
+    sentCount: 230, // Approx 92%
+    failedCount: 20,
   },
   {
     id: "dummy-campaign-7",
@@ -105,10 +105,10 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Join hands for a peaceful future. Let's build bridges, not walls, between India and Pakistan. #PeaceNow",
     createdAt: subDays(new Date(), 1).toISOString(),
     updatedAt: subDays(new Date(), 1).toISOString(),
-    status: "Draft",
+    status: "Sent",
     audienceSize: 5000,
-    sentCount: 0,
-    failedCount: 0,
+    sentCount: 4500, // Approx 90%
+    failedCount: 500,
   }
 ];
 
@@ -116,6 +116,18 @@ const initialDummyCampaigns: Campaign[] = [
 initialDummyCampaigns.forEach(c => {
     if (!c.updatedAt) {
         c.updatedAt = c.createdAt;
+    }
+    // Ensure sent/failed counts are consistent if status is Sent
+    if (c.status === "Sent") {
+        if (c.audienceSize > 0 && (c.sentCount + c.failedCount !== c.audienceSize)) {
+            console.warn(`Recalculating sent/failed for dummy campaign ${c.id} due to inconsistency.`);
+            const successRate = Math.random() * 0.15 + 0.80; // 80-95% success
+            c.sentCount = Math.floor(c.audienceSize * successRate);
+            c.failedCount = c.audienceSize - c.sentCount;
+        } else if (c.audienceSize === 0) {
+            c.sentCount = 0;
+            c.failedCount = 0;
+        }
     }
 });
 
@@ -135,7 +147,26 @@ export function findInMemoryDummyCampaign(id: string): Campaign | undefined {
 
 export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
   const newCampaignToAdd: Campaign = JSON.parse(JSON.stringify(campaign)); // Ensure it's a deep copy
-  // Check if campaign with this ID already exists to prevent duplicates if logic allows
+  
+  // Ensure createdAt and updatedAt are set if not provided
+  if (!newCampaignToAdd.createdAt) {
+    newCampaignToAdd.createdAt = new Date().toISOString();
+  }
+  if (!newCampaignToAdd.updatedAt) {
+    newCampaignToAdd.updatedAt = newCampaignToAdd.createdAt;
+  }
+
+  // If campaign is added directly as 'Sent', calculate sent/failed counts if not provided
+  if (newCampaignToAdd.status === 'Sent' && newCampaignToAdd.audienceSize > 0 && (newCampaignToAdd.sentCount === undefined || newCampaignToAdd.failedCount === undefined || newCampaignToAdd.sentCount + newCampaignToAdd.failedCount !== newCampaignToAdd.audienceSize)) {
+      const successRate = Math.random() * 0.15 + 0.80; // 80-95% success
+      newCampaignToAdd.sentCount = Math.floor(newCampaignToAdd.audienceSize * successRate);
+      newCampaignToAdd.failedCount = newCampaignToAdd.audienceSize - newCampaignToAdd.sentCount;
+  } else if (newCampaignToAdd.status === 'Sent' && newCampaignToAdd.audienceSize === 0) {
+      newCampaignToAdd.sentCount = 0;
+      newCampaignToAdd.failedCount = 0;
+  }
+
+
   const existingIndex = mutableDummyCampaigns.findIndex(c => c.id === newCampaignToAdd.id);
   if (existingIndex > -1) {
     mutableDummyCampaigns[existingIndex] = newCampaignToAdd; // Update if exists
@@ -148,24 +179,26 @@ export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
 export function updateInMemoryDummyCampaign(id: string, payload: CampaignUpdatePayload): Campaign | null {
   const index = mutableDummyCampaigns.findIndex(c => c.id === id);
   if (index > -1) {
+    const existingCampaign = mutableDummyCampaigns[index];
     const updatedCampaignData = {
-        ...mutableDummyCampaigns[index],
+        ...existingCampaign,
         ...payload,
         updatedAt: new Date().toISOString()
     };
 
-    if (payload.status === 'Sent') {
-        const audienceSize = payload.audienceSize !== undefined ? payload.audienceSize : mutableDummyCampaigns[index].audienceSize;
-        // Only recalculate sent/failed if audienceSize is positive and counts weren't explicitly provided or audienceSize changed
+    // If status changes to 'Sent' or status is 'Sent' and audienceSize is updated
+    if (payload.status === 'Sent' || (existingCampaign.status === 'Sent' && payload.audienceSize !== undefined && payload.audienceSize !== existingCampaign.audienceSize) ) {
+        const audienceSize = payload.audienceSize !== undefined ? payload.audienceSize : existingCampaign.audienceSize;
+        // Only recalculate sent/failed if counts weren't explicitly provided in payload OR if audienceSize changed
         if ( (payload.sentCount === undefined || payload.failedCount === undefined || payload.audienceSize !== undefined) && audienceSize > 0) {
-            const successRate = Math.random() * 0.25 + 0.7; // 70-95% success
+            const successRate = Math.random() * 0.15 + 0.80; // 80-95% success
             updatedCampaignData.sentCount = Math.floor(audienceSize * successRate);
             updatedCampaignData.failedCount = audienceSize - updatedCampaignData.sentCount;
-        } else if (audienceSize === 0) {
+        } else if (audienceSize === 0) { // Handles case where audience becomes 0
             updatedCampaignData.sentCount = 0;
             updatedCampaignData.failedCount = 0;
         }
-        // If sentCount/failedCount are explicitly in payload, they take precedence (already spread)
+        // If sentCount/failedCount are explicitly in payload, they take precedence (already spread from payload)
     } else if (payload.status && payload.status !== 'Sent') {
         // If status changes to non-Sent, and counts are not in payload, reset them
         if(payload.sentCount === undefined) updatedCampaignData.sentCount = 0;
@@ -185,7 +218,22 @@ export function deleteInMemoryDummyCampaign(id: string): boolean {
 }
 
 export function resetInMemoryDummyCampaigns() {
+  // Deep copy the initial state to ensure `mutableDummyCampaigns` is a fresh copy
   mutableDummyCampaigns = JSON.parse(JSON.stringify(initialDummyCampaigns));
+  // Re-apply the sent/failed count logic after reset, if needed, or ensure initial state is correct
+    mutableDummyCampaigns.forEach(c => {
+        if (c.status === "Sent") {
+            if (c.audienceSize > 0 && (c.sentCount + c.failedCount !== c.audienceSize)) {
+                 console.warn(`Recalculating sent/failed for reset dummy campaign ${c.id}.`);
+                const successRate = Math.random() * 0.15 + 0.80; // 80-95% success
+                c.sentCount = Math.floor(c.audienceSize * successRate);
+                c.failedCount = c.audienceSize - c.sentCount;
+            } else if (c.audienceSize === 0) {
+                c.sentCount = 0;
+                c.failedCount = 0;
+            }
+        }
+    });
 }
 
 // Initialize the store on load
