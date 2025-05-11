@@ -3,13 +3,20 @@
 
 import type { Campaign } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { ChartTooltipContent } from "@/components/ui/chart"; // Using shadcn's tooltip
+import { BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { ChartContainer, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { BarChartIcon, Info } from "lucide-react";
 
 interface CampaignPerformanceChartProps {
   campaigns: Campaign[];
 }
+
+const chartConfig = {
+  successRate: {
+    label: "Success Rate (%)",
+    color: "hsl(var(--primary))",
+  },
+} satisfies ChartConfig;
 
 export function CampaignPerformanceChart({ campaigns }: CampaignPerformanceChartProps) {
   const chartData = campaigns
@@ -17,6 +24,7 @@ export function CampaignPerformanceChart({ campaigns }: CampaignPerformanceChart
     .map(campaign => ({
       name: campaign.name.length > 15 ? campaign.name.substring(0, 12) + "..." : campaign.name, // Shorten long names
       successRate: campaign.audienceSize > 0 ? (campaign.sentCount / campaign.audienceSize) * 100 : 0,
+      campaignName: campaign.name, // Full name for tooltip
     }))
     .reverse(); // Show newest first if campaigns are sorted oldest to newest, or vice-versa
 
@@ -49,32 +57,34 @@ export function CampaignPerformanceChart({ campaigns }: CampaignPerformanceChart
         <CardDescription>Success rates (%) of your latest campaigns.</CardDescription>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-            <XAxis 
-              dataKey="name" 
-              stroke="hsl(var(--muted-foreground))" 
-              fontSize={12} 
-              tickLine={false} 
-              axisLine={false}
-            />
-            <YAxis 
-              stroke="hsl(var(--muted-foreground))" 
-              fontSize={12} 
-              tickLine={false} 
-              axisLine={false} 
-              tickFormatter={(value) => `${value}%`}
-              domain={[0, 100]}
-            />
-            <Tooltip
-              cursor={{ fill: 'hsl(var(--muted))', radius: 4 }}
-              content={<ChartTooltipContent indicator="dot" />}
-            />
-            <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-            <Bar dataKey="successRate" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Success Rate" unit="%" />
-          </BarChart>
-        </ResponsiveContainer>
+        <ChartContainer config={chartConfig} className="min-h-[300px] w-full">
+          <ResponsiveContainer width="100%" height={300}>
+            <RechartsBarChart data={chartData} margin={{ top: 5, right: 0, left: -20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis
+                dataKey="name"
+                stroke="hsl(var(--muted-foreground))"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+              />
+              <YAxis
+                stroke="hsl(var(--muted-foreground))"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(value) => `${value}%`}
+                domain={[0, 100]}
+              />
+              <Tooltip
+                cursor={{ fill: 'hsl(var(--muted))', radius: 4 }}
+                content={<ChartTooltipContent indicator="dot" nameKey="campaignName" labelKey="successRate" />}
+              />
+              <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+              <Bar dataKey="successRate" fill="var(--color-successRate)" radius={[4, 4, 0, 0]} name="Success Rate" unit="%" />
+            </RechartsBarChart>
+          </ResponsiveContainer>
+        </ChartContainer>
       </CardContent>
     </Card>
   );
