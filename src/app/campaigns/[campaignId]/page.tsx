@@ -1,4 +1,3 @@
-
 "use client";
 
 import AppLayout from "@/components/layout/app-layout";
@@ -67,8 +66,8 @@ const operatorDisplayMap: Record<string, string> = {
   gte: '>=',
   lte: '<=',
   contains: 'contains',
-  startswith: 'starts with', // consistent casing
-  endswith: 'ends with', // consistent casing
+  startswith: 'starts with', 
+  endswith: 'ends with', 
 };
 
 export default function CampaignDetailPage() {
@@ -176,7 +175,7 @@ export default function CampaignDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)} disabled={campaign.status === 'Sent' || campaign.status === 'Archived' || campaign.status === 'Failed'}>
+            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)} disabled={campaign.status === 'Sent' || campaign.status === 'Archived'}>
                 <Edit3 className="mr-2 h-4 w-4"/> Edit
             </Button>
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
@@ -318,4 +317,3 @@ export default function CampaignDetailPage() {
       </div>
     </AppLayout>
   );
-}
