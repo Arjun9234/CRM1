@@ -1,3 +1,4 @@
+
 // src/ai/flows/natural-language-to-segment.ts
 'use server';
 /**
@@ -59,7 +60,16 @@ const naturalLanguageToSegmentFlow = ai.defineFlow(
     outputSchema: NaturalLanguageToSegmentOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
-    return output!;
+    try {
+      const {output} = await prompt(input);
+      // Ensure output is not null, and if it is, provide a default empty rule.
+      return output || { segmentRule: "" };
+    } catch (error) {
+      console.error('Error in naturalLanguageToSegmentFlow calling AI model:', error);
+      // Return an empty segmentRule as a graceful fallback.
+      // The calling component (NlpSegmentInput) handles showing a toast for errors or empty rules.
+      return { segmentRule: "" };
+    }
   }
 );
+

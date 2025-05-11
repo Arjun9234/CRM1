@@ -1,3 +1,4 @@
+
 // src/ai/flows/ai-driven-message-suggestions.ts
 'use server';
 
@@ -65,7 +66,16 @@ const generateMessageSuggestionsFlow = ai.defineFlow(
     outputSchema: GenerateMessageSuggestionsOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
-    return output!;
+    try {
+      const {output} = await prompt(input);
+      // Ensure output is not null, and if it is, provide a default empty array.
+      // This handles cases where the model might return null/undefined despite the schema.
+      return output || { suggestions: [] };
+    } catch (error) {
+      console.error('Error in generateMessageSuggestionsFlow calling AI model:', error);
+      // Return an empty list of suggestions as a graceful fallback
+      return { suggestions: [] };
+    }
   }
 );
+
