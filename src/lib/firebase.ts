@@ -1,7 +1,7 @@
 
-import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getFirestore, Firestore } from 'firebase/firestore';
-import { getAuth, Auth, GoogleAuthProvider } from 'firebase/auth';
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
+import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getAuth, type Auth as FirebaseAuthType, GoogleAuthProvider } from 'firebase/auth'; // Renamed Auth type import
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -15,41 +15,39 @@ const firebaseConfig = {
 
 let app: FirebaseApp;
 let db: Firestore;
-let auth: Auth;
+let authInstance: FirebaseAuthType; // Use the renamed type FirebaseAuthType
 const googleProvider = new GoogleAuthProvider();
 
 try {
   if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-    console.error('Firebase config is missing critical values (apiKey or projectId). Check your .env file and Firebase project setup.');
-    // Potentially throw an error here or handle it gracefully depending on desired behavior
-    // For now, we'll let initializeApp potentially fail and log it.
+    console.error('Firebase config is missing critical values (apiKey or projectId). Check your .env file and Firebase project setup. Firebase features might not work.');
+    // app, db, authInstance will remain undefined if this condition is met early.
+    // This is a critical setup error. The application might not function correctly regarding Firebase services.
+  } else {
+    // Initialize Firebase
+    // Ensures Firebase is initialized only once, common pattern for Next.js
+    if (!getApps().length) {
+      app = initializeApp(firebaseConfig);
+    } else {
+      app = getApp();
+    }
+    db = getFirestore(app);
+    authInstance = getAuth(app); // Initialize the auth instance
+    console.log("Firebase initialized successfully.");
   }
-  
-  console.log("Attempting to initialize Firebase with config:", {
-    apiKey: firebaseConfig.apiKey ? 'SET' : 'NOT SET',
-    authDomain: firebaseConfig.authDomain,
-    projectId: firebaseConfig.projectId,
-    // Add other sensitive fields carefully if needed for debugging, or just check their presence
-  });
-
-  app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-  db = getFirestore(app);
-  auth = getAuth(app);
-  
-  console.log("Firebase initialized successfully.");
-
 } catch (error) {
   console.error("CRITICAL: Firebase initialization failed in firebase.ts:", error);
-  console.error("Firebase config used:", firebaseConfig); // Log the config that caused the error
-  // In a real app, you might want to throw this error to stop the app or set db/auth to null
-  // and handle that state in your components/API routes.
-  // For now, this will log the error prominently. If db/auth are used while undefined, it will lead to runtime errors.
-  // This ensures that if `db` or `auth` are used later and are undefined, the root cause (init failure) is logged.
-  // To prevent further errors, we could assign placeholder/mock objects or ensure db/auth are checked before use.
-  // However, if Firebase init fails, the app is likely unusable for DB/auth features.
-  // Re-throwing can make the server crash explicitly, which might be desired for critical services.
-  // throw error; // Uncomment to make the app crash hard on init failure.
+  // Log the config without exposing sensitive keys if possible, or just confirm structure
+  console.error("Firebase config (structure check):", {
+    apiKey: firebaseConfig.apiKey ? 'Exists' : 'MISSING!',
+    authDomain: firebaseConfig.authDomain ? 'Exists' : 'MISSING!',
+    projectId: firebaseConfig.projectId ? 'Exists' : 'MISSING!',
+    // It's generally good practice not to log the actual keys in production logs.
+  });
+  // In case of an error, app, db, and authInstance might not be initialized.
+  // Components using them should ideally handle potential undefined values,
+  // or the application should have a global error state/boundary for such critical failures.
 }
 
-export { app, db, auth, googleProvider };
-
+// Export the renamed auth instance as 'auth' for consistent use in other files (e.g., useAuth hook)
+export { app, db, authInstance as auth, googleProvider };
