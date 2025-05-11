@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link'; // Added Link import
+import Link from 'next/link'; 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 
 
 export function LoginForm() {
-  const { login, signInWithGoogle, isLoading: authIsLoading } = useAuth(); // Renamed isLoading to authIsLoading
+  const { login, signInWithGoogle, isLoading: authIsLoading } = useAuth(); 
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -35,7 +35,7 @@ export function LoginForm() {
     }
     setIsEmailLoading(true);
     try {
-      await login(name, email); // Mock login
+      await login(name, email); 
       toast({
         title: "Login Successful",
         description: `Welcome back, ${name}!`,
@@ -61,7 +61,7 @@ export function LoginForm() {
         title: "Signing in with Google...",
         description: "Please wait while we authenticate you.",
       });
-      // router.replace('/dashboard') will be handled by AuthProvider or page.tsx effect
+      // Successful sign-in will trigger onAuthStateChanged, which redirects.
     } catch (error: any) {
       console.error("Google Sign-In failed", error);
       let errorMessage = "An error occurred during Google Sign-In. Please try again.";
@@ -70,12 +70,15 @@ export function LoginForm() {
       } else if (error.code === 'auth/network-request-failed') {
         errorMessage = "Network error during Google Sign-In. Please check your connection.";
       } else if (error.code === 'auth/unauthorized-domain') {
-        errorMessage = "This domain is not authorized for Google Sign-In. Please check Firebase console.";
+        errorMessage = "This domain is not authorized for Google Sign-In. Please go to your Firebase project console -> Authentication -> Settings -> Authorized domains, and add your current hosting domain (e.g., localhost, your-app.vercel.app).";
+      } else if (error.code === 'auth/configuration-not-found') {
+        errorMessage = "Firebase project configuration for Google Sign-In is incomplete. Ensure Google is enabled as a sign-in provider in your Firebase console and that your project has a support email set.";
       }
       toast({
         title: "Google Sign-In Failed",
         description: errorMessage,
         variant: "destructive",
+        duration: 9000, // Longer duration for important errors
       });
     } finally {
       setIsGoogleLoading(false);
