@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Campaign, CampaignUpdatePayload, SegmentRule } from "@/lib/types";
@@ -25,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-async function updateCampaign(campaignId: string, payload: CampaignUpdatePayload): Promise<any> {
+async function updateCampaign(campaignId: string, payload: CampaignUpdatePayload): Promise<Campaign> {
   const response = await fetch(`/api/campaigns/${campaignId}`, {
     method: 'PUT',
     headers: {
@@ -56,7 +57,7 @@ const symbolToShortCodeMap: Record<string, string> = {
   '<=': 'lte',
   'contains': 'contains',
   'starts_with': 'startsWith',
-  'ends_with': 'endsWith',
+  'endswith': 'endsWith',
 };
 
 const campaignStatuses: Campaign['status'][] = ['Draft', 'Scheduled', 'Sent', 'Archived', 'Cancelled', 'Failed'];
@@ -65,12 +66,12 @@ const campaignStatuses: Campaign['status'][] = ['Draft', 'Scheduled', 'Sent', 'A
 export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
   const [campaignName, setCampaignName] = useState(existingCampaign.name);
   const [segmentName, setSegmentName] = useState(existingCampaign.segmentName || "");
-  const [rules, setRules] = useState(existingCampaign.rules);
-  const [ruleLogic, setRuleLogic] = useState(existingCampaign.ruleLogic);
+  const [rules, setRules] = useState<SegmentRule[]>(existingCampaign.rules);
+  const [ruleLogic, setRuleLogic] = useState<'AND' | 'OR'>(existingCampaign.ruleLogic);
   const [message, setMessage] = useState(existingCampaign.message);
-  const [status, setStatus] = useState(existingCampaign.status);
+  const [status, setStatus] = useState<Campaign['status']>(existingCampaign.status);
   const [isSuggestingMessage, setIsSuggestingMessage] = useState(false);
-  const [messageSuggestions, setMessageSuggestions] = useState([]);
+  const [messageSuggestions, setMessageSuggestions] = useState<string[]>([]);
   const [audienceSize, setAudienceSize] = useState(existingCampaign.audienceSize);
 
   const router = useRouter();
@@ -89,15 +90,21 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
 
 
   const mutation = useMutation({
-    mutationFn: (payload) => updateCampaign(existingCampaign.id, payload),
-    onSuccess: (data) => {
+    mutationFn: (payload: CampaignUpdatePayload) => updateCampaign(existingCampaign.id, payload),
+    onSuccess: async (data) => { // Make onSuccess async
       toast({
         title: "Campaign Updated!",
         description: `Campaign "${data.name || campaignName}" has been successfully updated.`,
       });
+      // Invalidate queries to mark them as stale
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       queryClient.invalidateQueries({ queryKey: ['campaign', existingCampaign.id] });
       queryClient.invalidateQueries({ queryKey: ['campaign', existingCampaign.id, 'edit'] });
+
+      // Explicitly refetch the main campaigns list for the dashboard.
+      // This ensures the data is fresh before navigating.
+      await queryClient.refetchQueries({ queryKey: ['campaigns'], exact: true });
+      
       router.push("/dashboard");
     },
     onError: (error: Error) => {
@@ -109,13 +116,13 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
     },
   });
 
-  const handleNlpRuleGenerated = (ruleText) => {
+  const handleNlpRuleGenerated = (ruleText: string) => {
     const parts = ruleText.match(/(\w+)\s*([<>=!]+|contains|starts_with|ends_with)\s*(.+)/i);
     if (parts && parts.length === 4) {
         const parsedOperator = parts[2].trim().toLowerCase();
         const shortCodeOperator = symbolToShortCodeMap[parsedOperator] || parsedOperator;
         
-        const newRule = {
+        const newRule: SegmentRule = {
             id: Date.now().toString(),
             field: parts[1].trim(),
             operator: shortCodeOperator, 
@@ -151,7 +158,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!campaignName || !segmentName || rules.length === 0 || !message) {
       toast({
@@ -162,7 +169,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
       return;
     }
 
-    const updatedCampaignPayload = {
+    const updatedCampaignPayload: CampaignUpdatePayload = {
       name: campaignName,
       segmentName: segmentName,
       rules: rules, 
@@ -214,7 +221,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
              {messageSuggestions.length > 0 && (
               <div className="mt-2 space-y-2">
                 <Label className="text-sm text-muted-foreground">AI Suggestions:</Label>
-                 <Select onValueChange={(value) => setMessage(value)} disabled={mutation.isPending}>
+                 <Select onValueChange={(value: string) => setMessage(value)} disabled={mutation.isPending}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select a suggestion" />
                   </SelectTrigger>
@@ -234,7 +241,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
           </div>
            <div>
             <Label htmlFor="status">Campaign Status</Label>
-            <Select value={status} onValueChange={(value) => setStatus(value)} disabled={mutation.isPending}>
+            <Select value={status} onValueChange={(value: Campaign['status']) => setStatus(value)} disabled={mutation.isPending}>
               <SelectTrigger id="status" className="w-full">
                 <SelectValue placeholder="Select status" />
               </SelectTrigger>
@@ -284,3 +291,4 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
     </form>
   );
 }
+
