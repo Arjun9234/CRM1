@@ -58,6 +58,8 @@ export interface Customer {
   createdAt: string; // ISO date string
   updatedAt?: string; // ISO date string
   tags?: string[];
+  acquisitionSource?: string; // New field
+  lastSeenOnline?: string; // New field: ISO date string
   // createdBy?: string; // userId
 }
 
@@ -71,6 +73,7 @@ export interface Task {
   status: TaskStatus;
   priority: TaskPriority;
   assignedTo?: string; // User name or ID
+  project?: string; // New field for project/context
   createdAt: string; // ISO date string
   updatedAt?: string; // ISO date string
   tags?: string[];

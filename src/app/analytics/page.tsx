@@ -2,27 +2,30 @@
 "use client";
 import AppLayout from "@/components/layout/app-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { BarChart3, Users, LineChart, TrendingUp, Activity, Target } from "lucide-react";
+import { BarChart3, Users, LineChart, TrendingUp, Activity, Target, DollarSign, TrendingDown, Smile } from "lucide-react"; // Added DollarSign, TrendingDown, Smile
 import { ResponsiveContainer, BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, LineChart as RechartsLineChart, Line } from 'recharts';
 import { ChartContainer, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
-import { subMonths, format } from 'date-fns';
+import { subMonths, format, subDays } from 'date-fns';
 
 // Dummy data for charts
-const customerAcquisitionData = [
-  { month: format(subMonths(new Date(), 5), 'MMM'), customers: 15 },
-  { month: format(subMonths(new Date(), 4), 'MMM'), customers: 25 },
-  { month: format(subMonths(new Date(), 3), 'MMM'), customers: 40 },
-  { month: format(subMonths(new Date(), 2), 'MMM'), customers: 30 },
-  { month: format(subMonths(new Date(), 1), 'MMM'), customers: 50 },
-  { month: format(new Date(), 'MMM'), customers: 65 },
-];
+const customerAcquisitionData = Array.from({ length: 6 }, (_, i) => ({
+  month: format(subMonths(new Date(), 5 - i), 'MMM'),
+  customers: 15 + Math.floor(Math.random() * 50) + i * 5,
+}));
 
 const campaignEffectivenessData = [
   { name: 'Spring Sale', reach: 1200, conversion: 8 },
   { name: 'Welcome Email', reach: 500, conversion: 15 },
   { name: 'Re-engagement', reach: 800, conversion: 5 },
   { name: 'Holiday Promo', reach: 2000, conversion: 12 },
+  { name: 'Q2 Newsletter', reach: 1500, conversion: 7 },
 ];
+
+const customerEngagementData = Array.from({ length: 12 }, (_, i) => ({
+  month: format(subMonths(new Date(), 11 - i), 'MMM yy'),
+  score: 60 + Math.floor(Math.random() * 30) + Math.sin(i / 2) * 5, // Simulate some fluctuation
+}));
+
 
 const customerAcquisitionChartConfig = {
   customers: {
@@ -36,6 +39,13 @@ const campaignEffectivenessChartConfig = {
   conversion: { label: "Conversion %", color: "hsl(var(--chart-2))" },
 } satisfies ChartConfig;
 
+const customerEngagementChartConfig = {
+  score: {
+    label: "Engagement Score",
+    color: "hsl(var(--chart-3))",
+  },
+} satisfies ChartConfig;
+
 
 export default function AnalyticsPage() {
   return (
@@ -46,7 +56,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Key Metrics */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <Card className="shadow-md">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Customers</CardTitle>
@@ -87,10 +97,30 @@ export default function AnalyticsPage() {
               <p className="text-xs text-muted-foreground">Active in last 30 days</p>
             </CardContent>
           </Card>
+          <Card className="shadow-md">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Avg. LTV</CardTitle>
+              <DollarSign className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">₹12,350</div>
+              <p className="text-xs text-muted-foreground">Estimated Customer Lifetime Value</p>
+            </CardContent>
+          </Card>
+          <Card className="shadow-md">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Churn Rate</CardTitle>
+              <TrendingDown className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">3.5%</div>
+              <p className="text-xs text-muted-foreground">Monthly customer churn</p>
+            </CardContent>
+          </Card>
         </div>
         
         {/* Charts Section */}
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2">
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -123,9 +153,9 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
              <ChartContainer config={campaignEffectivenessChartConfig} className="min-h-[250px] w-full">
-                <RechartsBarChart data={campaignEffectivenessData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                <RechartsBarChart data={campaignEffectivenessData} margin={{ top: 5, right: 10, left: -20, bottom: 20 /* Increased bottom margin */ }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" tickLine={false} axisLine={false} stroke="hsl(var(--muted-foreground))" fontSize={12} angle={-15} textAnchor="end" height={40}/>
+                  <XAxis dataKey="name" tickLine={false} axisLine={false} stroke="hsl(var(--muted-foreground))" fontSize={12} angle={-25} textAnchor="end" height={50} interval={0}/>
                   <YAxis yAxisId="left" orientation="left" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                   <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}%`} />
                   <Tooltip content={<ChartTooltipContent />} />
@@ -137,6 +167,31 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
         </div>
+
+        <div className="grid gap-6 md:grid-cols-1">
+            <Card className="shadow-lg">
+                <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                    <Smile className="h-5 w-5 text-primary" />
+                    Customer Engagement Score Trend
+                </CardTitle>
+                <CardDescription>Monthly average customer engagement score over the last year.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                <ChartContainer config={customerEngagementChartConfig} className="min-h-[250px] w-full">
+                    <RechartsLineChart data={customerEngagementData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="month" tickLine={false} axisLine={false} stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                    <YAxis tickLine={false} axisLine={false} stroke="hsl(var(--muted-foreground))" fontSize={12} domain={[0, 100]} />
+                    <Tooltip content={<ChartTooltipContent indicator="dot" />} />
+                    <Legend />
+                    <Line type="monotone" dataKey="score" stroke="var(--color-score)" strokeWidth={2} dot={{ r: 4, fill: "var(--color-score)" }} activeDot={{ r: 6 }} />
+                    </RechartsLineChart>
+                </ChartContainer>
+                </CardContent>
+            </Card>
+        </div>
+
 
         <Card className="shadow-lg">
           <CardHeader>
@@ -162,4 +217,3 @@ export default function AnalyticsPage() {
     </AppLayout>
   );
 }
-

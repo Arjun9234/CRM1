@@ -6,9 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Users, PlusCircle, Search, Loader2, AlertTriangle } from "lucide-react";
+import { Users, PlusCircle, Search, Loader2, AlertTriangle, ShoppingBag, Eye } from "lucide-react";
 import type { Customer, CustomerStatus, CustomerCreationPayload } from "@/lib/types";
-import { format, subDays, subMonths, formatISO } from "date-fns";
+import { format, subDays, subMonths, formatISO, formatDistanceToNow } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -57,6 +57,7 @@ const customerFormSchema = z.object({
   email: z.string().email("Invalid email address"),
   company: z.string().optional(),
   status: z.enum(['Active', 'Lead', 'Inactive', 'New', 'Archived']).default('New'),
+  acquisitionSource: z.string().optional(), // Added
 });
 
 
@@ -79,13 +80,14 @@ export default function CustomersPage() {
     queryFn: fetchCustomers,
   });
 
-  const { control, handleSubmit, reset } = useForm<z.infer<typeof customerFormSchema>>({
+  const { control, handleSubmit, reset, formState: { errors: formErrors } } = useForm<z.infer<typeof customerFormSchema>>({
     resolver: zodResolver(customerFormSchema),
     defaultValues: {
       name: "",
       email: "",
       company: "",
       status: "New",
+      acquisitionSource: "",
     },
   });
 
@@ -105,10 +107,12 @@ export default function CustomersPage() {
   const onAddCustomerSubmit = (data: z.infer<typeof customerFormSchema>) => {
     const payload: CustomerCreationPayload = {
       ...data,
-      avatarUrl: `https://picsum.photos/seed/${encodeURIComponent(data.email)}/40/40`, // Auto-generate avatar
+      avatarUrl: `https://picsum.photos/seed/${encodeURIComponent(data.email)}/40/40`, 
       totalSpend: 0,
-      lastContact: formatISO(new Date()), // Set last contact to now
-      tags: [data.status],
+      lastContact: formatISO(new Date()), 
+      lastSeenOnline: formatISO(new Date()), // Also set lastSeenOnline on creation
+      tags: data.status ? [data.status] : [], // Add status as a tag
+      acquisitionSource: data.acquisitionSource || undefined,
     };
     createCustomerMutation.mutate(payload);
   };
@@ -174,45 +178,39 @@ export default function CustomersPage() {
                   Add Customer
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
+              <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle>Add New Customer</DialogTitle>
                   <DialogDescription>
                     Fill in the details for the new customer.
                   </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleSubmit(onAddCustomerSubmit)} className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="name" className="text-right">Name</Label>
-                    <Controller
-                      name="name"
-                      control={control}
-                      render={({ field }) => <Input id="name" {...field} className="col-span-3" />}
-                    />
+                <form onSubmit={handleSubmit(onAddCustomerSubmit)} className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
+                  <div>
+                    <Label htmlFor="name">Name</Label>
+                    <Controller name="name" control={control} render={({ field }) => <Input id="name" {...field} />} />
+                    {formErrors.name && <p className="text-red-500 text-xs mt-1">{formErrors.name.message}</p>}
                   </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="email" className="text-right">Email</Label>
-                     <Controller
-                      name="email"
-                      control={control}
-                      render={({ field }) => <Input id="email" type="email" {...field} className="col-span-3" />}
-                    />
+                  <div>
+                    <Label htmlFor="email">Email</Label>
+                     <Controller name="email" control={control} render={({ field }) => <Input id="email" type="email" {...field} />} />
+                     {formErrors.email && <p className="text-red-500 text-xs mt-1">{formErrors.email.message}</p>}
                   </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="company" className="text-right">Company</Label>
-                    <Controller
-                      name="company"
-                      control={control}
-                      render={({ field }) => <Input id="company" {...field} className="col-span-3" />}
-                    />
+                  <div>
+                    <Label htmlFor="company">Company</Label>
+                    <Controller name="company" control={control} render={({ field }) => <Input id="company" {...field} />} />
                   </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="status" className="text-right">Status</Label>
+                  <div>
+                    <Label htmlFor="acquisitionSource">Acquisition Source</Label>
+                    <Controller name="acquisitionSource" control={control} render={({ field }) => <Input id="acquisitionSource" {...field} placeholder="e.g., Organic, Referral"/>} />
+                  </div>
+                  <div>
+                    <Label htmlFor="status">Status</Label>
                     <Controller
                         name="status"
                         control={control}
                         render={({ field }) => (
-                            <select {...field} className="col-span-3 p-2 border rounded-md bg-background">
+                            <select {...field} className="w-full p-2 border rounded-md bg-background">
                                 {(['New', 'Lead', 'Active', 'Inactive', 'Archived'] as CustomerStatus[]).map(s => (
                                     <option key={s} value={s}>{s}</option>
                                 ))}
@@ -249,10 +247,10 @@ export default function CustomersPage() {
                     <TableHead className="w-[80px]">Avatar</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead className="hidden md:table-cell">Email</TableHead>
-                    <TableHead className="hidden lg:table-cell">Company</TableHead>
+                    <TableHead className="hidden lg:table-cell">Acq. Source</TableHead>
                     <TableHead className="text-right">Total Spend</TableHead>
                     <TableHead className="hidden md:table-cell text-center">Status</TableHead>
-                    <TableHead className="hidden sm:table-cell">Last Contact</TableHead>
+                    <TableHead className="hidden sm:table-cell">Last Seen</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -266,7 +264,11 @@ export default function CustomersPage() {
                       </TableCell>
                       <TableCell className="font-medium">{customer.name}</TableCell>
                       <TableCell className="hidden md:table-cell text-muted-foreground">{customer.email}</TableCell>
-                      <TableCell className="hidden lg:table-cell text-muted-foreground">{customer.company || "N/A"}</TableCell>
+                      <TableCell className="hidden lg:table-cell text-muted-foreground">
+                        <div className="flex items-center">
+                           <ShoppingBag className="mr-1.5 h-3.5 w-3.5 text-primary/70" /> {customer.acquisitionSource || "N/A"}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right">₹{customer.totalSpend.toLocaleString()}</TableCell>
                       <TableCell className="hidden md:table-cell text-center">
                         <Badge variant={statusVariantMap[customer.status]}
@@ -281,7 +283,10 @@ export default function CustomersPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell text-muted-foreground">
-                        {customer.lastContact ? format(new Date(customer.lastContact), "MMM dd, yyyy") : 'N/A'}
+                         <div className="flex items-center">
+                           <Eye className="mr-1.5 h-3.5 w-3.5 text-primary/70" /> 
+                           {customer.lastSeenOnline ? formatDistanceToNow(new Date(customer.lastSeenOnline), { addSuffix: true }) : 'N/A'}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

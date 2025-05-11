@@ -4,7 +4,7 @@ import AppLayout from "@/components/layout/app-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ListChecks, PlusCircle, CalendarDays, User, Tag, Flag, Loader2, AlertTriangle } from "lucide-react";
+import { ListChecks, PlusCircle, CalendarDays, User, Tag, Flag, Loader2, AlertTriangle, FolderKanban } from "lucide-react"; // Added FolderKanban for project
 import type { Task, TaskStatus, TaskPriority, TaskCreationPayload } from "@/lib/types";
 import { format, formatISO, addDays } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -58,6 +58,7 @@ const taskFormSchema = z.object({
   priority: z.enum(['High', 'Medium', 'Low']).default('Medium'),
   status: z.enum(['To Do', 'In Progress', 'Completed', 'Blocked', 'Archived']).default('To Do'),
   assignedTo: z.string().optional(),
+  project: z.string().optional(), // Added project
   tags: z.string().optional().transform(val => val ? val.split(',').map(tag => tag.trim()).filter(tag => tag) : []),
 });
 
@@ -100,6 +101,11 @@ const TaskCard = ({ task }: { task: Task }) => {
       </CardHeader>
       <CardContent className="space-y-3 flex-grow">
         {task.description && <p className="text-sm text-muted-foreground line-clamp-3">{task.description}</p>}
+        {task.project && (
+            <div className="flex items-center text-xs text-muted-foreground">
+                <FolderKanban className="h-3 w-3 mr-1" /> Project: {task.project}
+            </div>
+        )}
         <div className="flex items-center text-xs text-muted-foreground">
           <User className="h-3 w-3 mr-1" /> Assigned to: {task.assignedTo || "Unassigned"}
         </div>
@@ -137,10 +143,11 @@ export default function TasksPage() {
     defaultValues: {
       title: "",
       description: "",
-      dueDate: formatISO(addDays(new Date(), 7)).split('T')[0], // Default to one week from now, date part only
+      dueDate: formatISO(addDays(new Date(), 7)).split('T')[0], 
       priority: "Medium",
       status: "To Do",
       assignedTo: "",
+      project: "", // Added project
       tags: "",
     },
   });
@@ -161,14 +168,15 @@ export default function TasksPage() {
   const onAddTaskSubmit = (data: z.infer<typeof taskFormSchema>) => {
     const payload: TaskCreationPayload = {
       ...data,
-      dueDate: formatISO(new Date(data.dueDate)), // Ensure full ISO string
+      dueDate: formatISO(new Date(data.dueDate)), 
       tags: data.tags || [],
+      project: data.project || undefined, // Ensure project is passed
     };
     createTaskMutation.mutate(payload);
   };
 
   const tasksByStatus = tasks.reduce((acc, task) => {
-    const statusKey = task.status as TaskStatus; // Ensure task.status is a valid key
+    const statusKey = task.status as TaskStatus; 
     if (!acc[statusKey]) {
       acc[statusKey] = [];
     }
@@ -266,6 +274,10 @@ export default function TasksPage() {
                     <Label htmlFor="assignedTo">Assigned To</Label>
                     <Controller name="assignedTo" control={control} render={({ field }) => <Input id="assignedTo" {...field} placeholder="e.g. John Doe" />} />
                   </div>
+                  <div>
+                    <Label htmlFor="project">Project / Context</Label>
+                    <Controller name="project" control={control} render={({ field }) => <Input id="project" {...field} placeholder="e.g. Q3 Marketing Launch" />} />
+                  </div>
                    <div>
                     <Label htmlFor="tags">Tags (comma-separated)</Label>
                     <Controller name="tags" control={control} render={({ field }) => <Input id="tags" {...field} placeholder="e.g. marketing, report" />} />
@@ -300,7 +312,6 @@ export default function TasksPage() {
                 </div>
               )
             ))}
-             {/* Ensure all status columns are potentially rendered even if empty for consistent layout, or filter out empty ones */}
             {statusOrder.filter(status => !tasksByStatus[status] || tasksByStatus[status].length === 0).map(status => (
                  <div key={status} className="space-y-4 p-1 rounded-lg bg-muted/30 min-h-[200px]">
                     <h2 className={`text-lg font-semibold px-2 py-2 rounded-md flex items-center gap-2 sticky top-0 bg-muted/80 z-10 backdrop-blur-sm`}>

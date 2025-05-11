@@ -4,7 +4,7 @@ import { collection, addDoc, getDocs, Timestamp, query, orderBy } from 'firebase
 import { db } from '@/lib/firebase';
 import type { Customer, CustomerCreationPayload, CustomerStatus } from '@/lib/types';
 import { z } from 'zod';
-import { subDays, formatISO } from 'date-fns';
+import { subDays, formatISO, subHours } from 'date-fns';
 
 const customerCreationSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -14,6 +14,7 @@ const customerCreationSchema = z.object({
   totalSpend: z.number().min(0).default(0),
   lastContact: z.string().datetime(), // ISO String
   status: z.enum(['Active', 'Lead', 'Inactive', 'New', 'Archived']),
+  acquisitionSource: z.string().optional(), // Added
   tags: z.array(z.string()).optional(),
 });
 
@@ -28,6 +29,8 @@ const dummyCustomers: Customer[] = [
     lastContact: subDays(new Date(), 15).toISOString(),
     status: "Active",
     createdAt: subDays(new Date(), 180).toISOString(),
+    acquisitionSource: "Organic Search",
+    lastSeenOnline: subHours(new Date(), 2).toISOString(),
     tags: ["Tech", "VIP"],
   },
   {
@@ -40,6 +43,8 @@ const dummyCustomers: Customer[] = [
     lastContact: subDays(new Date(), 5).toISOString(),
     status: "Lead",
     createdAt: subDays(new Date(), 30).toISOString(),
+    acquisitionSource: "Referral",
+    lastSeenOnline: subDays(new Date(), 1).toISOString(),
     tags: ["Retail", "Prospect"],
   },
   {
@@ -52,6 +57,8 @@ const dummyCustomers: Customer[] = [
     lastContact: subDays(new Date(), 95).toISOString(),
     status: "Inactive",
     createdAt: subDays(new Date(), 300).toISOString(),
+    acquisitionSource: "Social Media",
+    lastSeenOnline: subDays(new Date(), 80).toISOString(),
     tags: ["Services"],
   },
   {
@@ -64,6 +71,8 @@ const dummyCustomers: Customer[] = [
     lastContact: subDays(new Date(), 2).toISOString(),
     status: "New",
     createdAt: subDays(new Date(), 2).toISOString(),
+    acquisitionSource: "Website Signup",
+    lastSeenOnline: subHours(new Date(), 24).toISOString(),
     tags: ["New Signup"],
   },
    {
@@ -76,6 +85,8 @@ const dummyCustomers: Customer[] = [
     lastContact: subDays(new Date(), 45).toISOString(),
     status: "Active",
     createdAt: subDays(new Date(), 500).toISOString(),
+    acquisitionSource: "Trade Show",
+    lastSeenOnline: subDays(new Date(), 3).toISOString(),
     tags: ["Enterprise", "Loyal"],
   }
 ];
@@ -97,6 +108,7 @@ export async function GET() {
         ...data,
         createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
         lastContact: (data.lastContact instanceof Timestamp ? data.lastContact.toDate().toISOString() : data.lastContact as string) || new Date().toISOString(),
+        lastSeenOnline: (data.lastSeenOnline instanceof Timestamp ? data.lastSeenOnline.toDate().toISOString() : data.lastSeenOnline as string),
         updatedAt: (data.updatedAt as Timestamp)?.toDate().toISOString(),
       } as Customer;
     });
@@ -122,9 +134,10 @@ export async function POST(request: Request) {
     
     const { lastContact, ...restOfData } = validationResult.data;
 
-    const newCustomerData: CustomerCreationPayload & { createdAt: Timestamp, lastContact: Timestamp } = {
+    const newCustomerData: CustomerCreationPayload & { createdAt: Timestamp, lastContact: Timestamp, lastSeenOnline: Timestamp } = {
       ...restOfData,
       lastContact: Timestamp.fromDate(new Date(lastContact)),
+      lastSeenOnline: Timestamp.now(), // Set last seen to current time on creation
       createdAt: Timestamp.now(),
     };
 
@@ -136,6 +149,7 @@ export async function POST(request: Request) {
         ...newCustomerData,
         createdAt: newCustomerData.createdAt.toDate().toISOString(),
         lastContact: newCustomerData.lastContact.toDate().toISOString(),
+        lastSeenOnline: newCustomerData.lastSeenOnline.toDate().toISOString(),
     }
 
     return NextResponse.json({ message: 'Customer created successfully', customer: createdCustomer }, { status: 201 });

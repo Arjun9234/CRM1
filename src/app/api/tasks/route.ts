@@ -13,6 +13,7 @@ const taskCreationSchema = z.object({
   status: z.enum(['To Do', 'In Progress', 'Completed', 'Blocked', 'Archived']),
   priority: z.enum(['High', 'Medium', 'Low']),
   assignedTo: z.string().optional(),
+  project: z.string().optional(), // Added project field
   tags: z.array(z.string()).optional(),
 });
 
@@ -25,6 +26,7 @@ const dummyTasks: Task[] = [
     status: "In Progress",
     priority: "High",
     assignedTo: "Priya Sharma",
+    project: "Strategic Planning",
     createdAt: subDays(new Date(), 2).toISOString(),
     tags: ["Strategy", "Q3", "Marketing"],
   },
@@ -36,6 +38,7 @@ const dummyTasks: Task[] = [
     status: "To Do",
     priority: "Medium",
     assignedTo: "Rohan Mehta",
+    project: "Sales Pipeline",
     createdAt: subDays(new Date(), 1).toISOString(),
     tags: ["Sales", "Leads"],
   },
@@ -47,6 +50,7 @@ const dummyTasks: Task[] = [
     status: "Completed",
     priority: "High",
     assignedTo: "Aarav Patel",
+    project: "Campaign Analytics",
     createdAt: subDays(new Date(), 15).toISOString(),
     updatedAt: subDays(new Date(), 4).toISOString(),
     tags: ["Analytics", "Report", "Sales"],
@@ -59,20 +63,21 @@ const dummyTasks: Task[] = [
     status: "To Do",
     priority: "Low",
     assignedTo: "Sanya Singh",
+    project: "Website Maintenance",
     createdAt: new Date().toISOString(),
     tags: ["Website", "Content"],
   },
   {
     id: "task-dummy-5",
     title: "Onboard New Enterprise Client",
-    description: "Kick-off meeting and initial setup for Rao Industries.",
+    description: "Kick-off meeting and initial setup for Rao Industries. Waiting for client's security clearance.",
     dueDate: addDays(new Date(), 1).toISOString(),
     status: "Blocked",
     priority: "High",
     assignedTo: "Vikram Rao",
+    project: "Client Onboarding",
     createdAt: subDays(new Date(), 3).toISOString(),
     tags: ["Client", "Onboarding", "Enterprise"],
-    description: "Waiting for client's security clearance."
   },
    {
     id: "task-dummy-6",
@@ -82,6 +87,7 @@ const dummyTasks: Task[] = [
     status: "To Do",
     priority: "Medium",
     assignedTo: "Priya Sharma",
+    project: "HR Initiatives",
     createdAt: new Date().toISOString(),
     tags: ["HR", "Team Event"],
   }
