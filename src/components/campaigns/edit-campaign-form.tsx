@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Campaign, CampaignUpdatePayload, SegmentRule } from "@/lib/types";
@@ -66,12 +65,12 @@ const campaignStatuses: Campaign['status'][] = ['Draft', 'Scheduled', 'Sent', 'A
 export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
   const [campaignName, setCampaignName] = useState(existingCampaign.name);
   const [segmentName, setSegmentName] = useState(existingCampaign.segmentName || "");
-  const [rules, setRules] = useState<SegmentRule[]>(existingCampaign.rules);
-  const [ruleLogic, setRuleLogic] = useState<'AND' | 'OR'>(existingCampaign.ruleLogic);
+  const [rules, setRules] = useState(existingCampaign.rules);
+  const [ruleLogic, setRuleLogic] = useState(existingCampaign.ruleLogic);
   const [message, setMessage] = useState(existingCampaign.message);
-  const [status, setStatus] = useState<Campaign['status']>(existingCampaign.status);
+  const [status, setStatus] = useState(existingCampaign.status);
   const [isSuggestingMessage, setIsSuggestingMessage] = useState(false);
-  const [messageSuggestions, setMessageSuggestions] = useState<string[]>([]);
+  const [messageSuggestions, setMessageSuggestions] = useState([]);
   const [audienceSize, setAudienceSize] = useState(existingCampaign.audienceSize);
 
   const router = useRouter();
@@ -90,7 +89,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
 
 
   const mutation = useMutation({
-    mutationFn: (payload: CampaignUpdatePayload) => updateCampaign(existingCampaign.id, payload),
+    mutationFn: (payload) => updateCampaign(existingCampaign.id, payload),
     onSuccess: (data) => {
       toast({
         title: "Campaign Updated!",
@@ -99,7 +98,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       queryClient.invalidateQueries({ queryKey: ['campaign', existingCampaign.id] });
       queryClient.invalidateQueries({ queryKey: ['campaign', existingCampaign.id, 'edit'] });
-      router.push(`/campaigns/${existingCampaign.id}`);
+      router.push("/dashboard");
     },
     onError: (error: Error) => {
       toast({
@@ -110,13 +109,13 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
     },
   });
 
-  const handleNlpRuleGenerated = (ruleText: string) => {
+  const handleNlpRuleGenerated = (ruleText) => {
     const parts = ruleText.match(/(\w+)\s*([<>=!]+|contains|starts_with|ends_with)\s*(.+)/i);
     if (parts && parts.length === 4) {
         const parsedOperator = parts[2].trim().toLowerCase();
         const shortCodeOperator = symbolToShortCodeMap[parsedOperator] || parsedOperator;
         
-        const newRule: SegmentRule = {
+        const newRule = {
             id: Date.now().toString(),
             field: parts[1].trim(),
             operator: shortCodeOperator, 
@@ -152,7 +151,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!campaignName || !segmentName || rules.length === 0 || !message) {
       toast({
@@ -163,7 +162,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
       return;
     }
 
-    const updatedCampaignPayload: CampaignUpdatePayload = {
+    const updatedCampaignPayload = {
       name: campaignName,
       segmentName: segmentName,
       rules: rules, 
@@ -235,7 +234,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
           </div>
            <div>
             <Label htmlFor="status">Campaign Status</Label>
-            <Select value={status} onValueChange={(value: Campaign['status']) => setStatus(value)} disabled={mutation.isPending}>
+            <Select value={status} onValueChange={(value) => setStatus(value)} disabled={mutation.isPending}>
               <SelectTrigger id="status" className="w-full">
                 <SelectValue placeholder="Select status" />
               </SelectTrigger>

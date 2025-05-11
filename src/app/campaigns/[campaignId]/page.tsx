@@ -76,9 +76,9 @@ export default function CampaignDetailPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const campaignId = params.campaignId as string;
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleteDialogOpen] = useState(false);
 
-  const { data: campaign, isLoading, error, isError } = useQuery<Campaign>({
+  const { data: campaign, isLoading, error, isError } = useQuery({
     queryKey: ['campaign', campaignId],
     queryFn: () => fetchCampaign(campaignId),
     enabled: !!campaignId, 
@@ -175,10 +175,10 @@ export default function CampaignDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)} disabled={campaign.status === 'Sent' || campaign.status === 'Archived'}>
+            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)}>
                 <Edit3 className="mr-2 h-4 w-4"/> Edit
             </Button>
-            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <AlertDialog open={isDeleteDialogOpen} onOpenChange={() => {}}>
               <AlertDialogTrigger asChild>
                  <Button variant="destructive">
                     <Trash2 className="mr-2 h-4 w-4"/> Delete
@@ -298,7 +298,7 @@ export default function CampaignDetailPage() {
             <CardContent>
                 {campaign.rules.length > 0 ? (
                 <ul className="space-y-3">
-                    {campaign.rules.map((rule: SegmentRule) => (
+                    {campaign.rules.map((rule) => (
                     <li key={rule.id} className="p-3 border rounded-md bg-muted/50">
                         <span className="font-medium text-primary">{rule.field}</span>{' '}
                         <span className="text-muted-foreground font-mono">{operatorDisplayMap[rule.operator.toLowerCase()] || rule.operator}</span>{' '}
