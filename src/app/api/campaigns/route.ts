@@ -30,31 +30,34 @@ export async function GET() {
   let firebaseError = false;
 
   try {
-    if (!db) { // Check if db is initialized
-      throw new Error("Firestore database is not initialized. Check Firebase configuration.");
-    }
-    const campaignsCol = collection(db, 'campaigns');
-    const q = query(campaignsCol, orderBy('createdAt', 'desc'));
-    const campaignSnapshot = await getDocs(q);
-    
-    if (!campaignSnapshot.empty) {
-      firebaseCampaigns = campaignSnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          name: data.name,
-          segmentName: data.segmentName,
-          rules: data.rules,
-          ruleLogic: data.ruleLogic,
-          message: data.message,
-          status: data.status,
-          audienceSize: data.audienceSize,
-          sentCount: data.sentCount,
-          failedCount: data.failedCount,
-          createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
-          updatedAt: (data.updatedAt as Timestamp)?.toDate().toISOString(),
-        } as Campaign;
-      });
+    if (!db) { 
+      console.warn("GET /api/campaigns: Firestore database is not initialized. Likely Firebase config issue.");
+      firebaseError = true;
+      // Proceed to return dummy data if Firebase is down
+    } else {
+      const campaignsCol = collection(db, 'campaigns');
+      const q = query(campaignsCol, orderBy('createdAt', 'desc'));
+      const campaignSnapshot = await getDocs(q);
+      
+      if (!campaignSnapshot.empty) {
+        firebaseCampaigns = campaignSnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            name: data.name,
+            segmentName: data.segmentName,
+            rules: data.rules,
+            ruleLogic: data.ruleLogic,
+            message: data.message,
+            status: data.status,
+            audienceSize: data.audienceSize,
+            sentCount: data.sentCount,
+            failedCount: data.failedCount,
+            createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
+            updatedAt: (data.updatedAt as Timestamp)?.toDate().toISOString(),
+          } as Campaign;
+        });
+      }
     }
   } catch (error) {
     console.error("Error fetching campaigns from Firebase (GET /api/campaigns):", error);
@@ -84,21 +87,32 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  console.log("POST /api/campaigns: Received request at", new Date().toISOString());
   try {
-    if (!db) { // Check if db is initialized
-      console.error("Firestore database is not initialized in POST /api/campaigns. Check Firebase configuration.");
-      return NextResponse.json({ message: 'Failed to create campaign', error: 'Database not initialized.' }, { status: 500 });
+    if (!db) { 
+      console.error("POST /api/campaigns: Firestore database is not initialized. Check Firebase configuration.");
+      return NextResponse.json({ message: 'Database not initialized. Ensure Firebase is correctly configured in .env and project settings.' }, { status: 500 });
     }
+    console.log("POST /api/campaigns: Firestore DB instance seems available.");
 
-    const body = await request.json();
+    let body;
+    try {
+        body = await request.json();
+        console.log("POST /api/campaigns: Parsed request body:", JSON.stringify(body, null, 2).substring(0, 500) + (JSON.stringify(body, null, 2).length > 500 ? "..." : ""));
+    } catch (jsonError) {
+        console.error("POST /api/campaigns: Invalid JSON in request body:", jsonError);
+        return NextResponse.json({ message: 'Invalid JSON payload provided.', error: (jsonError as Error).message }, { status: 400 });
+    }
     
     const validationResult = campaignCreationSchema.safeParse(body);
     if (!validationResult.success) {
+      console.warn("POST /api/campaigns: Validation failed for request body:", validationResult.error.flatten().fieldErrors);
       return NextResponse.json({ 
         message: 'Invalid campaign data', 
         errors: validationResult.error.flatten().fieldErrors 
       }, { status: 400 });
     }
+    console.log("POST /api/campaigns: Request body validated successfully.");
 
     const { name, segmentName, rules, ruleLogic, message, status, audienceSize } = validationResult.data;
 
@@ -134,10 +148,11 @@ export async function POST(request: Request) {
         dataToSave.failedCount = 0;
     }
 
-    console.log("Data being sent to Firestore (POST /api/campaigns):", JSON.stringify(dataToSave, null, 2));
+    console.log("POST /api/campaigns: Data being sent to Firestore:", JSON.stringify(dataToSave, null, 2).substring(0, 500) + (JSON.stringify(dataToSave, null, 2).length > 500 ? "..." : ""));
 
     const campaignsCol = collection(db, 'campaigns');
     const docRef = await addDoc(campaignsCol, dataToSave);
+    console.log("POST /api/campaigns: Document added to Firestore with ID:", docRef.id);
     
     const createdCampaignResponse: Campaign = {
         id: docRef.id,
@@ -155,18 +170,20 @@ export async function POST(request: Request) {
 
     try {
       addInMemoryDummyCampaign(createdCampaignResponse);
+      console.log("POST /api/campaigns: Campaign added to in-memory store.");
     } catch (inMemoryError) {
       console.error("Error adding campaign to in-memory store after Firebase success (POST /api/campaigns):", inMemoryError);
     }
     
+    console.log("POST /api/campaigns: Successfully created campaign, returning 201 response.");
     return NextResponse.json(createdCampaignResponse, { status: 201 });
 
   } catch (error: any) {
-    console.error("--- Error Creating Campaign in POST /api/campaigns ---");
+    console.error("--- CRITICAL ERROR IN POST /api/campaigns ---");
     console.error("Timestamp:", new Date().toISOString());
     
     let errorMessage = 'An unexpected error occurred while creating the campaign.';
-    let errorDetails = {};
+    let errorDetails: Record<string, any> = { rawError: String(error) };
 
     if (error.name === 'FirebaseError' || (error.code && typeof error.code === 'string' && error.code.startsWith('firebase'))) {
         errorMessage = `Firebase error: ${error.message} (Code: ${error.code || 'N/A'})`;
@@ -175,7 +192,8 @@ export async function POST(request: Request) {
         errorMessage = 'Invalid data format for campaign creation.';
         errorDetails = error.flatten().fieldErrors;
     } else if (error instanceof SyntaxError && error.message.includes("JSON")) {
-        errorMessage = 'Invalid JSON payload provided.';
+        // This case should be caught earlier by the explicit body parsing try-catch
+        errorMessage = 'Invalid JSON payload provided (caught by main try-catch).';
         errorDetails = { syntaxErrorMessage: error.message };
     } else if (error instanceof Error) {
         errorMessage = error.message;
@@ -187,16 +205,23 @@ export async function POST(request: Request) {
     
     console.error("Error Message:", errorMessage);
     console.error("Error Details:", JSON.stringify(errorDetails, null, 2));
-    // Log the full error object if it's complex and not already covered
+    
     if (typeof error === 'object' && error !== null && !(error instanceof Error)) {
         try {
-            console.error("Full raw error object:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+            console.error("Full raw error object (attempting stringify):", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
         } catch (e) {
             console.error("Full raw error object (unserializable):", error);
         }
     }
-    console.error("--- End of Error Creating Campaign ---");
+    console.error("--- End of Critical Error in POST /api/campaigns ---");
+    
+    // Ensure the final returned error is simple JSON to prevent issues with NextResponse.json
+    let safeErrorMessageForResponse = 'An unexpected error occurred.';
+    if (typeof errorMessage === 'string' && errorMessage.length < 200) { // Keep it concise for client
+        safeErrorMessageForResponse = errorMessage;
+    }
 
-    return NextResponse.json({ message: 'Failed to create campaign', error: errorMessage, details: errorDetails }, { status: 500 });
+    console.log("POST /api/campaigns: Returning error response:", { message: 'Failed to create campaign', error: safeErrorMessageForResponse });
+    return NextResponse.json({ message: 'Failed to create campaign', error: safeErrorMessageForResponse, details: errorDetails }, { status: 500 });
   }
 }

@@ -54,7 +54,7 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
         }
       } else if (errorBodyText.toLowerCase().includes("<html")) {
         errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs.`;
-        console.error("Full HTML error response from server (Create Campaign):", errorBodyText);
+        console.error("Full HTML error response from server (Create Campaign):", errorBodyText.substring(0, 1000)); // Log a snippet
       } else if (errorBodyText) {
         errorMessage = `Server error (status: ${response.status}). Response: ${errorBodyText.substring(0, 200)}`;
       }
@@ -62,7 +62,6 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
       console.warn("Error processing/parsing error response body during campaign creation. Status:", response.status, e);
       if (errorBodyText.toLowerCase().includes("<html")) {
          errorMessage = `Server returned an unparsable HTML error (status: ${response.status}). Check server logs.`;
-         // console.error("Full unparsable HTML error response from server (Create Campaign):", errorBodyText); // Already logged above
       } else if (errorBodyText) {
          errorMessage = `Failed to parse error response (status: ${response.status}). Raw response preview: ${errorBodyText.substring(0,100)}`;
       } else {
@@ -70,14 +69,14 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
       }
     }
     
-    console.error("--- Create Campaign API Error Details ---");
+    console.error("--- Create Campaign API Error Details (Frontend) ---");
     console.error("Status:", response.status);
     console.error("StatusText:", response.statusText || "Unknown Status Text");
-    console.error("Message to be thrown:", errorMessage);
+    console.error("Final Error Message to be Thrown:", errorMessage);
     if (!errorBodyText.toLowerCase().includes("<html")) { 
-        console.error("Body Preview (first 500 chars unless HTML):", errorBodyText.substring(0, 500));
+        console.error("Error Body Preview (if not HTML):", errorBodyText.substring(0, 500));
     }
-    console.error("--- End of Create Campaign Error Details ---");
+    console.error("--- End of Create Campaign Error Details (Frontend) ---");
 
     throw new Error(errorMessage);
   }
@@ -85,8 +84,6 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
   try {
     return await response.json();
   } catch (e) {
-    // It's possible the server returns 201 OK, but the body is not JSON or is empty
-    // Let's try to get text again if parsing fails, it might give clues.
     const responseBodyForDebug = await response.text().catch(() => "Could not read response body again.");
     console.error("Server returned OK (e.g. 201), but with non-JSON success response during campaign creation:", response.status, "Body:", responseBodyForDebug, e);
     throw new Error("Received an invalid success response format from the server after campaign creation.");
@@ -339,4 +336,3 @@ export function CreateCampaignForm() {
     </form>
   );
 }
-
