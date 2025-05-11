@@ -36,22 +36,36 @@ async function updateCampaign(campaignId: string, payload: CampaignUpdatePayload
   });
 
   if (!response.ok) {
-    let errorData;
+    let errorMessage = `Failed to update campaign (status: ${response.status} ${response.statusText})`;
+    let errorBody = "";
     try {
-      errorData = await response.json();
+      errorBody = await response.text(); // Read body as text first for errors
+      const errorData = JSON.parse(errorBody); // Try to parse it as JSON
+      errorMessage = errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : errorMessage);
+      if (errorData.errors) { // Handle Zod validation errors from API
+        const errorDetails = Object.entries(errorData.errors)
+            .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
+            .join('; ');
+        errorMessage = `Invalid data: ${errorMessage}. Details: ${errorDetails}`;
+      }
     } catch (e) {
-      const errorText = await response.text();
-      console.error("Server returned non-JSON error response during update:", response.status, errorText);
-      throw new Error(`Server error: ${response.status}. Failed to update campaign.`);
+      // JSON.parse failed, use the text body if it's not empty, otherwise stick to status message
+      if (errorBody) {
+        errorMessage = errorBody.substring(0, 500); // Limit length for toast
+      }
+      console.warn("Could not parse error response as JSON during campaign update. Raw error body:", errorBody.substring(0, 500));
     }
-    throw new Error(errorData.message || `Failed to update campaign (status: ${response.status})`);
+    console.error("Error details from updateCampaign:", { status: response.status, message: errorMessage, rawBody: errorBody });
+    throw new Error(errorMessage);
   }
   
+  // If response is OK, parse the successful JSON response
   try {
     return await response.json();
   } catch (e) {
-    console.error("Server returned OK, but with non-JSON success response during update:", response.status, await response.text());
-    throw new Error("Received an invalid success response from the server after update.");
+    // This case means server sent 2xx status but body was not valid JSON
+    console.error("Server returned OK, but with non-JSON success response during update:", response.status, e);
+    throw new Error("Received an invalid success response format from the server after update.");
   }
 }
 
@@ -69,8 +83,8 @@ const symbolToShortCodeMap: Record<string, string> = {
   '>=': 'gte',
   '<=': 'lte',
   'contains': 'contains',
-  'startsWith': 'startsWith', // Consistent key
-  'endsWith': 'endsWith',     // Consistent key
+  'startsWith': 'startsWith', 
+  'endswith': 'endsWith',   
 };
 
 const campaignStatuses: Campaign['status'][] = ['Draft', 'Scheduled', 'Sent', 'Archived', 'Cancelled', 'Failed'];
@@ -120,6 +134,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
         title: "Failed to Update Campaign",
         description: error.message,
         variant: "destructive",
+        duration: 8000,
       });
     },
   });
@@ -176,10 +191,10 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!campaignName || !segmentName || rules.length === 0 || !message) {
+    if (!campaignName || rules.length === 0 || !message) { // segmentName is optional, can be empty
       toast({
         title: "Missing Information",
-        description: "Please fill all campaign details, define at least one segment rule, and write a message.",
+        description: "Campaign Name, Message, and at least one Segment Rule are required.",
         variant: "destructive",
       });
       return;
@@ -187,7 +202,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
 
     const updatedCampaignPayload: CampaignUpdatePayload = {
       name: campaignName,
-      segmentName: segmentName,
+      ...(segmentName && { segmentName }), // Only include if not empty
       rules: rules, 
       ruleLogic: ruleLogic,
       message: message,
@@ -278,13 +293,12 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
       <RuleBuilder rules={rules} onRulesChange={setRules} logic={ruleLogic} onLogicChange={setRuleLogic} disabled={mutation.isPending} />
 
       <div>
-        <Label htmlFor="segmentName">Segment Name</Label>
+        <Label htmlFor="segmentName">Segment Name (Optional)</Label>
         <Input
             id="segmentName"
             value={segmentName}
             onChange={(e) => setSegmentName(e.target.value)}
             placeholder="e.g., High Value Customers, Recent Signups"
-            required
             className="mt-1"
             disabled={mutation.isPending}
         />

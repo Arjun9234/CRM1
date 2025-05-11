@@ -36,38 +36,38 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
   });
 
   if (!response.ok) {
-    let errorPayload: { message: string, details?: any } = { message: `Failed to create campaign (status: ${response.status})` };
+    let errorMessage = `Failed to create campaign (status: ${response.status} ${response.statusText})`;
+    let errorBody = "";
     try {
-      const parsedError = await response.json();
-      errorPayload.details = parsedError;
-      if (parsedError.message && parsedError.errors) { 
-        const errorDetails = Object.entries(parsedError.errors)
+      errorBody = await response.text(); // Read body as text first for errors
+      const errorData = JSON.parse(errorBody); // Try to parse it as JSON
+      errorMessage = errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : errorMessage);
+      if (errorData.errors) { // Handle Zod validation errors from API
+        const errorDetails = Object.entries(errorData.errors)
             .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
             .join('; ');
-        errorPayload.message = `Invalid data: ${parsedError.message || 'Validation failed'}. Details: ${errorDetails}`;
-      } else if (parsedError.message) {
-        errorPayload.message = parsedError.message;
-      } else if (parsedError.error) {
-         errorPayload.message = typeof parsedError.error === 'string' ? parsedError.error : JSON.stringify(parsedError.error);
+        errorMessage = `Invalid data: ${errorMessage}. Details: ${errorDetails}`;
       }
     } catch (e) {
-      const errorText = await response.text();
-      console.error("Server returned non-JSON error response:", response.status, errorText);
-      errorPayload.message = `Server error ${response.status}. Response: ${errorText.substring(0,150)}... See console for full details.`;
-      errorPayload.details = errorText;
+      // JSON.parse failed, use the text body if it's not empty, otherwise stick to status message
+      if (errorBody) {
+        errorMessage = errorBody.substring(0, 500); // Limit length for toast
+      }
+       console.warn("Could not parse error response as JSON during campaign creation. Raw error body:", errorBody.substring(0, 500));
     }
-    console.error("Create campaign client error payload:", errorPayload);
-    throw new Error(errorPayload.message);
+    console.error("Error details from createCampaign:", { status: response.status, message: errorMessage, rawBody: errorBody });
+    throw new Error(errorMessage);
   }
 
+  // If response is OK (201 Created), parse the successful JSON response
   try {
     return await response.json();
-  } catch (e: any) {
-    const responseText = await response.text(); // Get text response if .json() fails
-    console.error("Server returned OK (201), but with non-JSON/malformed success response:", response.status, responseText, e);
-    throw new Error(`Received an invalid success response from the server. Details: ${e.message}. Response text: ${responseText.substring(0,150)}...`);
+  } catch (e) {
+    console.error("Server returned OK (201), but with non-JSON success response during campaign creation:", response.status, e);
+    throw new Error("Received an invalid success response format from the server after campaign creation.");
   }
 }
+
 
 const symbolToShortCodeMap: Record<string, string> = {
   '=': 'eq',
@@ -176,7 +176,7 @@ export function CreateCampaignForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!campaignName || rules.length === 0 || !message) { // segmentName is optional
+    if (!campaignName || rules.length === 0 || !message) { 
       toast({
         title: "Missing Information",
         description: "Campaign Name, Message, and at least one Segment Rule are required.",
