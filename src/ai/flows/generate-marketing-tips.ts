@@ -59,7 +59,18 @@ const generateMarketingTipsFlow = ai.defineFlow(
     outputSchema: GenerateMarketingTipsOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
-    return output!;
+    try {
+      const {output} = await prompt(input);
+      // If the prompt call is successful and output conforms to the schema, output will be populated.
+      // If the model call fails (e.g., 503 error), an exception will be thrown and caught below.
+      // The `!` non-null assertion assumes Genkit's prompt handling either provides valid output or throws.
+      return output!;
+    } catch (error) {
+      console.error('Error in generateMarketingTipsFlow calling AI model:', error);
+      // Gracefully degrade by returning an empty list of tips if the AI call fails.
+      // The UI (MarketingTipsWidget) will then display "No tips available".
+      return { tips: [] };
+    }
   }
 );
+
