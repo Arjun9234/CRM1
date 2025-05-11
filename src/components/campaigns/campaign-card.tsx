@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import type { Campaign } from "@/lib/types";
@@ -109,11 +107,11 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
         )}
       </CardContent>
       <CardFooter>
-        <Link href={`/campaigns/${campaign.id}`} passHref>
-          <Button variant="link" className="text-primary p-0">
+        <Button asChild variant="link" className="text-primary p-0">
+          <Link href={`/campaigns/${campaign.id}`}>
             <Eye className="mr-2 h-4 w-4" /> View Details
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </CardFooter>
     </Card>
   );
