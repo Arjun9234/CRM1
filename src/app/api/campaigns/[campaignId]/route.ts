@@ -4,7 +4,7 @@ import { doc, getDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore
 import { db } from '@/lib/firebase';
 import type { Campaign, CampaignUpdatePayload, SegmentRule } from '@/lib/types';
 import { z } from 'zod';
-import { findInMemoryDummyCampaign, updateInMemoryDummyCampaign, deleteInMemoryDummyCampaign, getInMemoryDummyCampaigns } from '@/lib/dummy-data-store';
+import { findInMemoryDummyCampaign, updateInMemoryDummyCampaign, deleteInMemoryDummyCampaign } from '@/lib/dummy-data-store';
 
 const segmentRuleSchema = z.object({
   id: z.string(),
@@ -56,7 +56,6 @@ export async function GET(
       };
       return NextResponse.json(campaign);
     } else {
-      // Not found in Firebase, try in-memory dummy data
       const dummyCampaign = findInMemoryDummyCampaign(campaignId);
       if (dummyCampaign) {
         return NextResponse.json(dummyCampaign);
@@ -84,53 +83,82 @@ export async function PUT(
     return NextResponse.json({ message: 'Campaign ID is required' }, { status: 400 });
   }
 
+  let parsedBody: any;
   try {
-    const body = await request.json();
-    const validationResult = campaignUpdateSchema.safeParse(body);
+    parsedBody = await request.json();
+  } catch (e) {
+    return NextResponse.json({ message: 'Invalid JSON body' }, { status: 400 });
+  }
 
-    if (!validationResult.success) {
-      return NextResponse.json({ message: 'Invalid campaign data', errors: validationResult.error.flatten().fieldErrors }, { status: 400 });
-    }
-    
+  const validationResult = campaignUpdateSchema.safeParse(parsedBody);
+
+  if (!validationResult.success) {
+    return NextResponse.json({ message: 'Invalid campaign data', errors: validationResult.error.flatten().fieldErrors }, { status: 400 });
+  }
+  
+  const validatedDataToUpdate: CampaignUpdatePayload = validationResult.data;
+
+  try {
     const campaignDocRef = doc(db, 'campaigns', campaignId);
-    const campaignDoc = await getDoc(campaignDocRef);
+    const campaignDocSnapshot = await getDoc(campaignDocRef);
 
-    if (campaignDoc.exists()) {
-      const updateData: Partial<Campaign> & { updatedAt: Timestamp } = {
-        ...validationResult.data,
+    if (campaignDocSnapshot.exists()) {
+      const dataForFirebaseUpdate = {
+        ...validatedDataToUpdate,
         updatedAt: Timestamp.now(),
       };
-      await updateDoc(campaignDocRef, updateData as any); // Cast to any to satisfy Firebase update partial type
-      const updatedDoc = await getDoc(campaignDocRef); // Fetch again to get the full updated document
-      const responseData = { ...updatedDoc.data(), id: updatedDoc.id, createdAt: (updatedDoc.data()?.createdAt as Timestamp)?.toDate().toISOString(), updatedAt: (updatedDoc.data()?.updatedAt as Timestamp)?.toDate().toISOString()};
+      const cleanedDataForFirebase = Object.fromEntries(
+        Object.entries(dataForFirebaseUpdate).filter(([_, v]) => v !== undefined)
+      );
+
+      await updateDoc(campaignDocRef, cleanedDataForFirebase);
+      
+      const updatedDocSnapshot = await getDoc(campaignDocRef);
+      const updatedDocData = updatedDocSnapshot.data();
+      
+      const responseData = { 
+        id: updatedDocSnapshot.id,
+        ...updatedDocData, 
+        createdAt: (updatedDocData?.createdAt as Timestamp)?.toDate().toISOString(), 
+        updatedAt: (updatedDocData?.updatedAt as Timestamp)?.toDate().toISOString()
+      };
       return NextResponse.json(responseData);
 
     } else {
-      // Try updating in-memory dummy data
-      const updatedDummyCampaign = updateInMemoryDummyCampaign(campaignId, validationResult.data);
+      const cleanedDataForDummyStore = Object.fromEntries(
+        Object.entries(validatedDataToUpdate).filter(([_, v]) => v !== undefined)
+      ) as CampaignUpdatePayload;
+      const updatedDummyCampaign = updateInMemoryDummyCampaign(campaignId, cleanedDataForDummyStore);
       if (updatedDummyCampaign) {
         console.warn(`Campaign ${campaignId} not in Firebase, updated in-memory dummy data.`);
         return NextResponse.json(updatedDummyCampaign);
       }
-      return NextResponse.json({ message: 'Campaign not found' }, { status: 404 });
+      return NextResponse.json({ message: 'Campaign not found in Firebase or dummy store' }, { status: 404 });
     }
-  } catch (error) {
-    console.error(`Error updating campaign ${campaignId} in Firebase:`, error);
-    // Attempt to update in-memory dummy data as a fallback if Firebase op failed
-    try {
-        const body = await request.json(); // Re-parse body if needed, or store it
-        const validationResult = campaignUpdateSchema.safeParse(body);
-        if (validationResult.success) {
-            const updatedDummyCampaign = updateInMemoryDummyCampaign(campaignId, validationResult.data);
+  } catch (error) { 
+    console.error(`Error during PUT operation for campaign ${campaignId}:`, error);
+    
+    let isFirebaseSpecificError = true; 
+    if (error instanceof Error && error.message.toLowerCase().includes("not found")) {
+        isFirebaseSpecificError = false; 
+    }
+
+    if (isFirebaseSpecificError) {
+        try {
+            const cleanedDataForDummyStoreFallback = Object.fromEntries(
+                Object.entries(validatedDataToUpdate).filter(([_, v]) => v !== undefined)
+            ) as CampaignUpdatePayload;
+            const updatedDummyCampaign = updateInMemoryDummyCampaign(campaignId, cleanedDataForDummyStoreFallback);
             if (updatedDummyCampaign) {
-                console.warn(`Firebase error for campaign ${campaignId}, updated in-memory dummy data as fallback.`);
+                console.warn(`Firebase error for campaign ${campaignId}. Updated in-memory dummy data as fallback.`);
                 return NextResponse.json(updatedDummyCampaign);
             }
+        } catch (fallbackError) {
+            console.error(`Error updating in-memory dummy campaign ${campaignId} during fallback:`, fallbackError);
         }
-    } catch (fallbackError) {
-        console.error(`Error updating in-memory dummy campaign ${campaignId} after Firebase error:`, fallbackError);
     }
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error during update';
     return NextResponse.json({ message: 'Failed to update campaign', error: errorMessage }, { status: 500 });
   }
 }
@@ -150,9 +178,10 @@ export async function DELETE(
 
     if (campaignDoc.exists()) {
       await deleteDoc(campaignDocRef);
+      // Attempt to delete from dummy store as well to keep them in sync if Firebase was primary
+      deleteInMemoryDummyCampaign(campaignId); 
       return NextResponse.json({ message: 'Campaign deleted successfully from Firebase' });
     } else {
-      // Try deleting from in-memory dummy data
       if (deleteInMemoryDummyCampaign(campaignId)) {
         console.warn(`Campaign ${campaignId} not in Firebase, deleted from in-memory dummy data.`);
         return NextResponse.json({ message: 'Campaign deleted successfully from in-memory store' });
@@ -161,7 +190,6 @@ export async function DELETE(
     }
   } catch (error) {
     console.error(`Error deleting campaign ${campaignId} from Firebase:`, error);
-     // Attempt to delete from in-memory dummy data as a fallback
     if (deleteInMemoryDummyCampaign(campaignId)) {
         console.warn(`Firebase error for campaign ${campaignId}, deleted from in-memory dummy data as fallback.`);
         return NextResponse.json({ message: 'Campaign deleted successfully from in-memory store after Firebase error' });
