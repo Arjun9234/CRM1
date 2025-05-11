@@ -5,7 +5,6 @@ import { subDays, addDays, subMonths, subYears } from 'date-fns';
 
 // Initial state with 30 campaigns.
 const initialDummyCampaigns: Campaign[] = [
-  // First 7 existing campaigns
   {
     id: "dummy-campaign-1",
     name: "Welcome New Users",
@@ -15,7 +14,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "👋 Welcome to EngageSphere! Explore our features and get started on your first campaign.",
     createdAt: subDays(new Date(), 10).toISOString(),
     updatedAt: subDays(new Date(), 9).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 150,
     sentCount: 142,
     failedCount: 8,
@@ -29,7 +28,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "☀️ Get ready! Our Summer Sale is just around the corner with exclusive deals for you.",
     createdAt: subDays(new Date(), 8).toISOString(),
     updatedAt: subDays(new Date(), 7).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 75,
     sentCount: 70,
     failedCount: 5,
@@ -43,7 +42,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "We miss you! Come back and enjoy a 15% discount on your next purchase. Use code COMEBACK15.",
     createdAt: subDays(new Date(), 12).toISOString(),
     updatedAt: subDays(new Date(), 11).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 200,
     sentCount: 188,
     failedCount: 12,
@@ -60,7 +59,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Your feedback matters! Help us improve by taking this quick survey.",
     createdAt: subDays(new Date(), 20).toISOString(),
     updatedAt: subDays(new Date(), 19).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 500,
     sentCount: 475,
     failedCount: 25,
@@ -74,9 +73,9 @@ const initialDummyCampaigns: Campaign[] = [
     message: "🔔 Early bird access to Holiday Specials! Don't miss out on exclusive offers.",
     createdAt: subDays(new Date(), 30).toISOString(),
     updatedAt: subDays(new Date(), 29).toISOString(),
-    status: "Sent",
+    status: "Sent", // Updated to Sent
     audienceSize: 300,
-    sentCount: 285,
+    sentCount: 285, // Keep existing, processCampaignsArray will verify/adjust if needed
     failedCount: 15,
   },
   {
@@ -88,7 +87,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "🚀 Discover our latest tech innovation! Pre-order now and get an exclusive discount.",
     createdAt: subDays(new Date(), 2).toISOString(),
     updatedAt: subDays(new Date(), 1).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 250,
     sentCount: 230,
     failedCount: 20,
@@ -106,12 +105,11 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Join hands for a peaceful future. Let's build bridges, not walls, between India and Pakistan. #PeaceNow",
     createdAt: subDays(new Date(), 1).toISOString(),
     updatedAt: subDays(new Date(), 1).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 5000,
     sentCount: 4500,
     failedCount: 500,
   },
-  // Adding 23 more campaigns
   {
     id: "dummy-campaign-8",
     name: "Q1 Product Update",
@@ -121,7 +119,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "📢 Check out what's new in our latest product update! Exciting features await.",
     createdAt: subDays(new Date(), 45).toISOString(),
     updatedAt: subDays(new Date(), 44).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 1200,
     sentCount: 1150,
     failedCount: 50,
@@ -135,10 +133,10 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Exclusive webinar for our Premium Members on Advanced Strategies. Register now!",
     createdAt: subDays(new Date(), 5).toISOString(),
     updatedAt: subDays(new Date(), 4).toISOString(),
-    status: "Scheduled",
+    status: "Sent", // Updated to Sent
     audienceSize: 90,
-    sentCount: 0,
-    failedCount: 0,
+    sentCount: 80, // Adjusted for "Sent" status
+    failedCount: 10,
   },
   {
     id: "dummy-campaign-10",
@@ -149,7 +147,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Introducing our new Loyalty Program! Earn points and get exclusive rewards.",
     createdAt: subDays(new Date(), 60).toISOString(),
     updatedAt: subDays(new Date(), 59).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 450,
     sentCount: 430,
     failedCount: 20,
@@ -161,12 +159,12 @@ const initialDummyCampaigns: Campaign[] = [
     rules: [{ id: "rule1", field: "tags", operator: "eq", value: "cart_abandoned_24h" }],
     ruleLogic: "AND",
     message: "Still thinking it over? Complete your purchase now and get free shipping!",
-    createdAt: subDays(new Date(), 0).toISOString(), // Very recent
+    createdAt: subDays(new Date(), 0).toISOString(), 
     updatedAt: subDays(new Date(), 0).toISOString(),
-    status: "Draft",
-    audienceSize: 30, // Smaller, more targeted
-    sentCount: 0,
-    failedCount: 0,
+    status: "Sent", // Updated to Sent
+    audienceSize: 30, 
+    sentCount: 25, // Adjusted for "Sent" status
+    failedCount: 5,
   },
   {
     id: "dummy-campaign-12",
@@ -177,7 +175,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "🎂 Happy Birthday! Enjoy a special gift from us on your special day.",
     createdAt: subDays(new Date(), 3).toISOString(),
     updatedAt: subDays(new Date(), 2).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 40,
     sentCount: 38,
     failedCount: 2,
@@ -186,14 +184,14 @@ const initialDummyCampaigns: Campaign[] = [
     id: "dummy-campaign-13",
     name: "Refer-a-Friend Bonus",
     segmentName: "All Users",
-    rules: [], // No specific rules, targets everyone (can be tricky in real systems)
+    rules: [], 
     ruleLogic: "AND",
     message: "Share the love! Refer a friend and both of you get ₹100 off.",
     createdAt: subMonths(new Date(), 2).toISOString(),
     updatedAt: subMonths(new Date(), 2).toISOString(),
-    status: "Archived",
+    status: "Sent", // Updated to Sent
     audienceSize: 2500,
-    sentCount: 2300,
+    sentCount: 2300, // Keep existing
     failedCount: 200,
   },
   {
@@ -205,7 +203,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Thanks for your recent purchase! We hope you're loving it. Share your experience!",
     createdAt: subDays(new Date(), 1).toISOString(),
     updatedAt: subDays(new Date(), 1).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 60,
     sentCount: 58,
     failedCount: 2,
@@ -217,12 +215,12 @@ const initialDummyCampaigns: Campaign[] = [
     rules: [{ id: "rule1", field: "TotalSpend", operator: "gte", value: "10000" }],
     ruleLogic: "AND",
     message: "VIP Access: Be the first to shop our New Collection before anyone else!",
-    createdAt: addDays(new Date(), 5).toISOString(), // Scheduled for future
+    createdAt: addDays(new Date(), 5).toISOString(), 
     updatedAt: new Date().toISOString(),
-    status: "Scheduled",
+    status: "Sent", // Updated to Sent
     audienceSize: 50,
-    sentCount: 0,
-    failedCount: 0,
+    sentCount: 45, // Adjusted for "Sent" status
+    failedCount: 5,
   },
   {
     id: "dummy-campaign-16",
@@ -231,11 +229,11 @@ const initialDummyCampaigns: Campaign[] = [
     rules: [{ id: "rule1", field: "tags", operator: "contains", value: "newsletter" }],
     ruleLogic: "AND",
     message: "Black Friday is here! Unbeatable deals up to 70% off. Shop now!",
-    createdAt: subMonths(new Date(), 1).toISOString(), // Example of a past seasonal campaign
+    createdAt: subMonths(new Date(), 1).toISOString(), 
     updatedAt: subMonths(new Date(), 1).toISOString(),
-    status: "Archived",
+    status: "Sent", // Updated to Sent
     audienceSize: 1500,
-    sentCount: 1400,
+    sentCount: 1400, // Keep existing
     failedCount: 100,
   },
   {
@@ -247,7 +245,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Enjoy a better experience on the go! Download our app today.",
     createdAt: subDays(new Date(), 25).toISOString(),
     updatedAt: subDays(new Date(), 24).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 350,
     sentCount: 320,
     failedCount: 30,
@@ -256,12 +254,12 @@ const initialDummyCampaigns: Campaign[] = [
     id: "dummy-campaign-18",
     name: "Flash Sale - 24 Hours Only!",
     segmentName: "Engaged Users (Viewed Product Last 7d)",
-    rules: [{ id: "rule1", field: "productViewed", operator: "contains", value: "any_product_last_7d" }], // Simplified tag
+    rules: [{ id: "rule1", field: "productViewed", operator: "contains", value: "any_product_last_7d" }], 
     ruleLogic: "AND",
     message: "⚡ FLASH SALE! 24 hours only. Don't miss out on amazing discounts!",
     createdAt: subDays(new Date(), 0).toISOString(),
     updatedAt: subDays(new Date(), 0).toISOString(),
-    status: "Sent", // Assuming it just went out
+    status: "Sent", // Already Sent
     audienceSize: 180,
     sentCount: 170,
     failedCount: 10,
@@ -275,7 +273,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Important: Scheduled maintenance on Sunday at 2 AM. Services might be temporarily unavailable.",
     createdAt: subDays(new Date(), 4).toISOString(),
     updatedAt: subDays(new Date(), 4).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 1100,
     sentCount: 1080,
     failedCount: 20,
@@ -289,7 +287,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Help us improve! Take our 2-minute Customer Satisfaction Survey.",
     createdAt: subDays(new Date(), 50).toISOString(),
     updatedAt: subDays(new Date(), 49).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 800,
     sentCount: 750,
     failedCount: 50,
@@ -301,11 +299,11 @@ const initialDummyCampaigns: Campaign[] = [
     rules: [{ id: "rule1", field: "signedUpDays", operator: "gte", value: "365" }],
     ruleLogic: "AND",
     message: "Thank you for a great year! Here's a look back at your journey with us.",
-    createdAt: subYears(new Date(), 1).toISOString(), // Campaign from last year
+    createdAt: subYears(new Date(), 1).toISOString(), 
     updatedAt: subYears(new Date(), 1).toISOString(),
-    status: "Archived",
+    status: "Sent", // Updated to Sent
     audienceSize: 600,
-    sentCount: 580,
+    sentCount: 580, // Keep existing
     failedCount: 20,
   },
   {
@@ -317,7 +315,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Hurry! Product X on your wishlist is running low on stock. Grab it now!",
     createdAt: subDays(new Date(), 6).toISOString(),
     updatedAt: subDays(new Date(), 6).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 25,
     sentCount: 23,
     failedCount: 2,
@@ -331,7 +329,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Mumbai! Join us for an exclusive local event this weekend. Details inside.",
     createdAt: subDays(new Date(), 15).toISOString(),
     updatedAt: subDays(new Date(), 14).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 400,
     sentCount: 380,
     failedCount: 20,
@@ -345,7 +343,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Good news! Item Y is back in stock. Order yours before it's gone again!",
     createdAt: subDays(new Date(), 9).toISOString(),
     updatedAt: subDays(new Date(), 9).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 120,
     sentCount: 115,
     failedCount: 5,
@@ -357,9 +355,9 @@ const initialDummyCampaigns: Campaign[] = [
     rules: [{ id: "rule1", field: "tags", operator: "contains", value: "newsletter" }],
     ruleLogic: "AND",
     message: "Your July newsletter is here! Catch up on the latest news, tips, and offers.",
-    createdAt: subDays(new Date(), 28).toISOString(), // Assuming today is end of July/early Aug
+    createdAt: subDays(new Date(), 28).toISOString(), 
     updatedAt: subDays(new Date(), 28).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 1600,
     sentCount: 1550,
     failedCount: 50,
@@ -373,7 +371,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "The new challenge begins now! Complete tasks and win exciting prizes.",
     createdAt: subDays(new Date(), 1).toISOString(),
     updatedAt: subDays(new Date(), 1).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 220,
     sentCount: 210,
     failedCount: 10,
@@ -387,7 +385,7 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Great news! The price for Product Z has dropped. Check it out now!",
     createdAt: subDays(new Date(), 3).toISOString(),
     updatedAt: subDays(new Date(), 3).toISOString(),
-    status: "Sent",
+    status: "Sent", // Already Sent
     audienceSize: 70,
     sentCount: 65,
     failedCount: 5,
@@ -396,15 +394,15 @@ const initialDummyCampaigns: Campaign[] = [
     id: "dummy-campaign-28",
     name: "Test Campaign - Internal",
     segmentName: "Internal Testers",
-    rules: [{ id: "rule1", field: "email", operator: "endsWith", value: "@engagesphere.dev" }], // Example internal domain
+    rules: [{ id: "rule1", field: "email", operator: "endsWith", value: "@engagesphere.dev" }], 
     ruleLogic: "AND",
     message: "This is a test message for internal campaign validation. Please ignore.",
     createdAt: subDays(new Date(), 0).toISOString(),
     updatedAt: subDays(new Date(), 0).toISOString(),
-    status: "Draft",
+    status: "Sent", // Updated to Sent
     audienceSize: 5,
-    sentCount: 0,
-    failedCount: 0,
+    sentCount: 4, // Adjusted for "Sent" status
+    failedCount: 1,
   },
   {
     id: "dummy-campaign-29",
@@ -415,10 +413,10 @@ const initialDummyCampaigns: Campaign[] = [
     message: "We're attempting to resend your previous message. Apologies for any inconvenience.",
     createdAt: subDays(new Date(), 18).toISOString(),
     updatedAt: subDays(new Date(), 17).toISOString(),
-    status: "Failed", // This one specifically shows a failed campaign
+    status: "Sent", // Updated to Sent, assuming a retry would be 'Sent'
     audienceSize: 15,
-    sentCount: 0, // All failed
-    failedCount: 15,
+    sentCount: 10, // Assume some retries succeed
+    failedCount: 5,
   },
   {
     id: "dummy-campaign-30",
@@ -429,10 +427,10 @@ const initialDummyCampaigns: Campaign[] = [
     message: "Apology: Due to unforeseen stock issues, the 'Mega Discount' promotion has been cancelled. We apologize for any inconvenience.",
     createdAt: subDays(new Date(), 13).toISOString(),
     updatedAt: subDays(new Date(), 13).toISOString(),
-    status: "Cancelled",
-    audienceSize: 0, // No one was actually sent
-    sentCount: 0,
-    failedCount: 0,
+    status: "Sent", // Updated to Sent, even though it was a cancellation notice
+    audienceSize: 2000, // Audience it was intended for or notified
+    sentCount: 1950, // Number of cancellation notices sent
+    failedCount: 50,
   }
 ];
 
@@ -460,8 +458,8 @@ const processCampaignsArray = (campaigns: Campaign[]): Campaign[] => {
       }
     } else if (campaignCopy.status !== "Sent" && campaignCopy.status !== "Archived" && campaignCopy.status !== "Failed") {
       // For Draft, Scheduled, Cancelled, ensure sent/failed are 0 unless explicitly set otherwise for some reason
-      if (campaignCopy.sentCount !== 0 && campaignCopy.audienceSize === 0) campaignCopy.sentCount = 0; // Or if audience is 0
-      if (campaignCopy.failedCount !== 0 && campaignCopy.audienceSize === 0) campaignCopy.failedCount = 0;
+       if (campaignCopy.sentCount !== 0) campaignCopy.sentCount = 0;
+       if (campaignCopy.failedCount !== 0) campaignCopy.failedCount = 0;
     }
     return campaignCopy;
   });
@@ -470,7 +468,7 @@ const processCampaignsArray = (campaigns: Campaign[]): Campaign[] => {
 let campaignsDB: Campaign[];
 
 // Changed key to ensure reset if structure changes or major data update
-const GLOBAL_CAMPAIGNS_KEY = '__ENGAGESPHERE_DUMMY_CAMPAIGNS_STORE_V5__'; 
+const GLOBAL_CAMPAIGNS_KEY = '__ENGAGESPHERE_DUMMY_CAMPAIGNS_STORE_V6__'; 
 
 if (process.env.NODE_ENV === 'production') {
   campaignsDB = processCampaignsArray(JSON.parse(JSON.stringify(initialDummyCampaigns)));
@@ -482,6 +480,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 export function getInMemoryDummyCampaigns(): Campaign[] {
+  // Create a deep copy to avoid modifying the original campaignsDB when sorting or manipulating outside
   const campaignsCopy = JSON.parse(JSON.stringify(campaignsDB));
   return campaignsCopy.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
@@ -492,9 +491,11 @@ export function findInMemoryDummyCampaign(id: string): Campaign | undefined {
 }
 
 export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
+  // Ensure the campaign being added is a new object, not a reference
   const newCampaignToAdd: Campaign = JSON.parse(JSON.stringify(campaign));
 
-  if (!newCampaignToAdd.id) { // Ensure ID is present, generate if not
+  // Ensure ID is present, generate if not (though API should handle this)
+  if (!newCampaignToAdd.id) {
       newCampaignToAdd.id = `dummy-campaign-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   }
 
@@ -507,7 +508,13 @@ export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
   
   const audience = newCampaignToAdd.audienceSize || 0;
   if (newCampaignToAdd.status === 'Sent') {
-      if (audience > 0 && (newCampaignToAdd.sentCount === undefined || newCampaignToAdd.failedCount === undefined || (newCampaignToAdd.sentCount + newCampaignToAdd.failedCount !== audience))) {
+      // Only initialize/recalculate if counts are not provided OR if they don't sum up to audienceSize
+      if (audience > 0 && 
+          (newCampaignToAdd.sentCount === undefined || 
+           newCampaignToAdd.failedCount === undefined || 
+           (newCampaignToAdd.sentCount + newCampaignToAdd.failedCount !== audience)
+          )
+      ) {
           const successRate = Math.random() * 0.20 + 0.75; 
           newCampaignToAdd.sentCount = Math.floor(audience * successRate);
           newCampaignToAdd.failedCount = audience - newCampaignToAdd.sentCount;
@@ -515,7 +522,9 @@ export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
           newCampaignToAdd.sentCount = 0;
           newCampaignToAdd.failedCount = 0;
       }
+      // If counts are provided and sum to audience, use them.
   } else { 
+      // For non-Sent statuses, counts should generally be 0 unless explicitly set otherwise by the payload
       if (newCampaignToAdd.sentCount === undefined) newCampaignToAdd.sentCount = 0;
       if (newCampaignToAdd.failedCount === undefined) newCampaignToAdd.failedCount = 0;
   }
@@ -523,59 +532,63 @@ export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
 
   const existingIndex = campaignsDB.findIndex(c => c.id === newCampaignToAdd.id);
   if (existingIndex > -1) {
-    campaignsDB[existingIndex] = newCampaignToAdd; // Update existing if ID matches (should be rare for truly "new")
+    campaignsDB[existingIndex] = newCampaignToAdd; // Update existing if ID matches
   } else {
-    // Add to the end to preserve initial sort order if this function is called multiple times
-    campaignsDB.push(newCampaignToAdd);
+    campaignsDB.push(newCampaignToAdd); // Add to the end of the array
   }
-  return JSON.parse(JSON.stringify(newCampaignToAdd));
+  return JSON.parse(JSON.stringify(newCampaignToAdd)); // Return a copy
 }
 
 export function updateInMemoryDummyCampaign(id: string, payload: CampaignUpdatePayload): Campaign | null {
   const index = campaignsDB.findIndex(c => c.id === id);
   if (index > -1) {
     const existingCampaign = campaignsDB[index];
+    // Create the base for the updated campaign using existing data
     const updatedCampaignData: Campaign = {
         ...existingCampaign, 
-        ...payload,         
-        updatedAt: new Date().toISOString(), 
-        // Critical: Ensure these are preserved from existing and not overwritten by partial payload
-        id: existingCampaign.id,
-        createdAt: existingCampaign.createdAt,
-        // Optional fields from payload should only overwrite if they exist in payload
+        ...payload, // Spread payload to overwrite fields
+        updatedAt: new Date().toISOString(), // Always update timestamp
+        // Explicitly ensure certain fields are preserved or correctly typed from payload
+        id: existingCampaign.id, // ID should not change
+        createdAt: existingCampaign.createdAt, // createdAt should not change
         status: payload.status !== undefined ? payload.status : existingCampaign.status, 
-        ruleLogic: payload.ruleLogic !== undefined ? payload.ruleLogic : existingCampaign.ruleLogic,
-        rules: payload.rules !== undefined ? payload.rules : existingCampaign.rules,
         audienceSize: payload.audienceSize !== undefined ? payload.audienceSize : existingCampaign.audienceSize,
+        // Make sure sentCount and failedCount are numbers
         sentCount: payload.sentCount !== undefined ? payload.sentCount : existingCampaign.sentCount,
         failedCount: payload.failedCount !== undefined ? payload.failedCount : existingCampaign.failedCount,
-        segmentName: payload.segmentName !== undefined ? payload.segmentName : existingCampaign.segmentName,
-        name: payload.name !== undefined ? payload.name : existingCampaign.name,
-        message: payload.message !== undefined ? payload.message : existingCampaign.message,
-
     };
 
     const audienceSize = updatedCampaignData.audienceSize; 
     
+    // If status is being set to 'Sent' (either from payload or was already 'Sent' and other things changed)
     if (updatedCampaignData.status === 'Sent') {
-        // Only recalculate if counts are not provided OR if audience size changed and counts are now inconsistent
         const providedSent = payload.sentCount !== undefined;
         const providedFailed = payload.failedCount !== undefined;
 
-        if (audienceSize > 0 && (!providedSent || !providedFailed || (payload.audienceSize !== undefined && payload.audienceSize !== existingCampaign.audienceSize))) {
-            const successRate = Math.random() * 0.20 + 0.75;
+        // Recalculate if:
+        // 1. Audience size is positive AND
+        // 2. Counts were NOT explicitly provided in this update payload OR
+        // 3. Audience size changed in this update and current counts are inconsistent
+        if (audienceSize > 0 && 
+            (!providedSent || !providedFailed || 
+             (payload.audienceSize !== undefined && payload.audienceSize !== existingCampaign.audienceSize) ||
+             (updatedCampaignData.sentCount + updatedCampaignData.failedCount !== audienceSize) // General check for consistency
+            )
+        ) {
+            const successRate = Math.random() * 0.20 + 0.75; // 75-95%
             updatedCampaignData.sentCount = Math.floor(audienceSize * successRate);
             updatedCampaignData.failedCount = audienceSize - updatedCampaignData.sentCount;
         } else if (audienceSize === 0) {
             updatedCampaignData.sentCount = 0;
             updatedCampaignData.failedCount = 0;
         }
-        // If counts were explicitly provided in payload for 'Sent' status, they are already set above
-    } else if (payload.status && payload.status !== 'Sent') {
-        // If status changes to non-Sent, reset counts unless explicitly provided
+        // If counts were explicitly provided in payload and are consistent, they are already set.
+    } else if (payload.status && payload.status !== 'Sent' && payload.status !== 'Archived' && payload.status !== 'Failed') {
+        // If status changes to Draft, Scheduled, Cancelled, reset counts unless explicitly provided in *this* payload.
         if(payload.sentCount === undefined) updatedCampaignData.sentCount = 0;
         if(payload.failedCount === undefined) updatedCampaignData.failedCount = 0;
     }
+    // For 'Archived' or 'Failed' status, we assume the counts reflect the state when it was 'Sent' or attempted.
 
     campaignsDB[index] = updatedCampaignData;
     return JSON.parse(JSON.stringify(campaignsDB[index]));
@@ -601,3 +614,5 @@ export function resetInMemoryDummyCampaigns() {
     campaignsDB = (global as any)[GLOBAL_CAMPAIGNS_KEY]; 
   }
 }
+
+    
