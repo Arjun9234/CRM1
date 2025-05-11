@@ -62,7 +62,7 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
       console.warn("Error processing/parsing error response body during campaign creation. Status:", response.status, e);
       if (errorBodyText.toLowerCase().includes("<html")) {
          errorMessage = `Server returned an unparsable HTML error (status: ${response.status}). Check server logs.`;
-         console.error("Full unparsable HTML error response from server (Create Campaign):", errorBodyText);
+         // console.error("Full unparsable HTML error response from server (Create Campaign):", errorBodyText); // Already logged above
       } else if (errorBodyText) {
          errorMessage = `Failed to parse error response (status: ${response.status}). Raw response preview: ${errorBodyText.substring(0,100)}`;
       } else {
@@ -74,7 +74,7 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
     console.error("Status:", response.status);
     console.error("StatusText:", response.statusText || "Unknown Status Text");
     console.error("Message to be thrown:", errorMessage);
-    if (!errorBodyText.toLowerCase().includes("<html")) { // Avoid re-logging full HTML if already logged
+    if (!errorBodyText.toLowerCase().includes("<html")) { 
         console.error("Body Preview (first 500 chars unless HTML):", errorBodyText.substring(0, 500));
     }
     console.error("--- End of Create Campaign Error Details ---");
@@ -85,7 +85,9 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
   try {
     return await response.json();
   } catch (e) {
-    const responseBodyForDebug = await response.text(); 
+    // It's possible the server returns 201 OK, but the body is not JSON or is empty
+    // Let's try to get text again if parsing fails, it might give clues.
+    const responseBodyForDebug = await response.text().catch(() => "Could not read response body again.");
     console.error("Server returned OK (e.g. 201), but with non-JSON success response during campaign creation:", response.status, "Body:", responseBodyForDebug, e);
     throw new Error("Received an invalid success response format from the server after campaign creation.");
   }
@@ -129,9 +131,9 @@ export function CreateCampaignForm() {
     onSuccess: (data: Campaign) => { 
       toast({
         title: "Campaign Created!",
-        description: `${data.name || campaignName} has been successfully created with status: ${data.status}.`,
+        description: `Campaign "${data.name || campaignName}" successfully added with status: ${data.status}.`,
       });
-      queryClient.invalidateQueries({ queryKey: ['campaigns'] }); // Invalidate to refetch campaign list
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] }); 
       router.push("/dashboard");
     },
     onError: (error: Error) => {
@@ -139,7 +141,7 @@ export function CreateCampaignForm() {
         title: "Failed to Create Campaign",
         description: error.message, 
         variant: "destructive",
-        duration: 10000, // Increased duration for potentially long error messages
+        duration: 10000, 
       });
     },
   });
@@ -337,3 +339,4 @@ export function CreateCampaignForm() {
     </form>
   );
 }
+
