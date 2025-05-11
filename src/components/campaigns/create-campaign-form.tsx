@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { CampaignCreationPayload, SegmentRule } from "@/lib/types";
@@ -45,14 +46,14 @@ const symbolToShortCodeMap: Record<string, string> = {
   '=': 'eq',
   '==': 'eq',
   '!=': 'neq',
-  '<>': 'neq',
+  '<>' : 'neq',
   '>': 'gt',
   '<': 'lt',
   '>=': 'gte',
   '<=': 'lte',
   'contains': 'contains',
-  'starts_with': 'startsWith',
-  'ends_with': 'endsWith',
+  'startsWith': 'startsWith', // Note: was 'starts_with' in some places, ensuring consistency
+  'endsWith': 'endsWith',   // Note: was 'ends_with' in some places
 };
 
 
@@ -72,12 +73,14 @@ export function CreateCampaignForm() {
 
   const mutation = useMutation({
     mutationFn: createCampaign,
-    onSuccess: (data) => {
+    onSuccess: async (data) => { // Made onSuccess async
       toast({
         title: "Campaign Created!",
         description: `${data.name || campaignName} has been successfully scheduled.`,
       });
-      queryClient.invalidateQueries({ queryKey: ['campaigns'] }); // Refetch campaigns list
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      // Explicitly refetch campaigns for the dashboard to ensure it has the latest data
+      await queryClient.refetchQueries({ queryKey: ['campaigns'], exact: true });
       router.push("/dashboard");
     },
     onError: (error: Error) => {
@@ -90,21 +93,32 @@ export function CreateCampaignForm() {
   });
 
   const handleNlpRuleGenerated = (ruleText: string) => {
-    const parts = ruleText.match(/(\w+)\s*([<>=!]+|contains|starts_with|ends_with)\s*(.+)/i);
+    // More robust parsing for operators like >=, <=, !=
+    const parts = ruleText.match(/(\w+)\s*([<>=!≤≥≠]+|contains|starts_with|endswith|startsWith|endsWith)\s*(.+)/i);
     if (parts && parts.length === 4) {
-        const parsedOperator = parts[2].trim().toLowerCase();
-        const shortCodeOperator = symbolToShortCodeMap[parsedOperator] || parsedOperator;
+        const rawOperator = parts[2].trim().toLowerCase();
+        // Normalize common symbols to short codes
+        const operatorMapping: Record<string, string> = {
+            ...symbolToShortCodeMap,
+            '≤': 'lte',
+            '≥': 'gte',
+            '≠': 'neq',
+            'startswith': 'startsWith',
+            'endswith': 'endsWith',
+        };
+        const shortCodeOperator = operatorMapping[rawOperator] || rawOperator;
+
 
         const newRule: SegmentRule = {
             id: Date.now().toString(),
             field: parts[1].trim(),
-            operator: shortCodeOperator, // Store the short code
+            operator: shortCodeOperator,
             value: parts[3].trim().replace(/^['"]|['"]$/g, ''),
         };
         setRules(prevRules => [...prevRules, newRule]);
         toast({ title: "Rule Added", description: "AI suggested rule has been added to the builder." });
     } else {
-        toast({ title: "Could not parse rule", description: `The AI suggested rule format ("${ruleText}") was not recognized. Please add manually.`, variant: "destructive", duration: 5000 });
+        toast({ title: "Could not parse rule", description: `The AI suggested rule format ("${ruleText}") was not recognized. Please add manually.`, variant: "destructive", duration: 7000 });
     }
   };
 

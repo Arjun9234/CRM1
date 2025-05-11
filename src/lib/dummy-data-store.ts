@@ -68,7 +68,7 @@ const initialDummyCampaigns: Campaign[] = [
     id: "dummy-campaign-5",
     name: "Holiday Early Bird", 
     segmentName: "Newsletter Subscribers",
-    rules: [{ id: "rule1", field: "tag", operator: "eq", value: "newsletter_subscriber" }], 
+    rules: [{ id: "rule1", field: "tags", operator: "eq", value: "newsletter_subscriber" }], // Changed field to 'tags' for variety
     ruleLogic: "AND",
     message: "🔔 Early bird access to Holiday Specials! Don't miss out on exclusive offers.",
     createdAt: subDays(new Date(), 30).toISOString(),
@@ -107,6 +107,18 @@ export function findInMemoryDummyCampaign(id: string): Campaign | undefined {
   return campaign ? JSON.parse(JSON.stringify(campaign)) : undefined;
 }
 
+export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
+  // Ensure the campaign being added has all necessary fields, especially those calculated by API on creation
+  const newCampaignToAdd: Campaign = {
+    ...campaign,
+    // sentCount and failedCount might be 0 if status is not 'Sent' at creation
+    // or calculated if status is 'Sent' (as done in API POST)
+    // The 'campaign' object passed here should ideally already have these from the API response.
+  };
+  mutableDummyCampaigns.unshift(newCampaignToAdd); // Add to the beginning for "most recent" behavior
+  return JSON.parse(JSON.stringify(newCampaignToAdd));
+}
+
 export function updateInMemoryDummyCampaign(id: string, payload: CampaignUpdatePayload): Campaign | null {
   const index = mutableDummyCampaigns.findIndex(c => c.id === id);
   if (index > -1) {
@@ -122,9 +134,14 @@ export function updateInMemoryDummyCampaign(id: string, payload: CampaignUpdateP
     if (payload.status === 'Sent') {
         const audienceSize = payload.audienceSize !== undefined ? payload.audienceSize : mutableDummyCampaigns[index].audienceSize;
         if (payload.sentCount === undefined || payload.failedCount === undefined || payload.audienceSize !== undefined) {
-          const successRate = Math.random() * 0.25 + 0.7; // 70-95% success to make it look good
-          updatedCampaignData.sentCount = Math.floor(audienceSize * successRate);
-          updatedCampaignData.failedCount = audienceSize - updatedCampaignData.sentCount;
+          if (audienceSize > 0) {
+            const successRate = Math.random() * 0.25 + 0.7; // 70-95% success
+            updatedCampaignData.sentCount = Math.floor(audienceSize * successRate);
+            updatedCampaignData.failedCount = audienceSize - updatedCampaignData.sentCount;
+          } else {
+            updatedCampaignData.sentCount = 0;
+            updatedCampaignData.failedCount = 0;
+          }
         }
     } else if (payload.status && payload.status !== 'Sent') {
         // If status changes to something other than 'Sent', reset counts if not explicitly provided

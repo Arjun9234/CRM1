@@ -4,7 +4,7 @@ import { collection, addDoc, getDocs, Timestamp, query, orderBy } from 'firebase
 import { db } from '@/lib/firebase';
 import type { Campaign, CampaignCreationPayload } from '@/lib/types';
 import { z } from 'zod';
-import { getInMemoryDummyCampaigns, findInMemoryDummyCampaign, updateInMemoryDummyCampaign, deleteInMemoryDummyCampaign } from '@/lib/dummy-data-store';
+import { getInMemoryDummyCampaigns, addInMemoryDummyCampaign, findInMemoryDummyCampaign, updateInMemoryDummyCampaign, deleteInMemoryDummyCampaign } from '@/lib/dummy-data-store';
 
 // Zod schema for validation
 const segmentRuleSchema = z.object({
@@ -67,15 +67,20 @@ export async function POST(request: Request) {
     const newCampaignData: CampaignCreationPayload & { createdAt: Timestamp, updatedAt?: Timestamp, sentCount: number, failedCount: number } = {
       ...validationResult.data,
       createdAt: Timestamp.now(),
-      sentCount: 0,
-      failedCount: 0,
+      sentCount: 0, // Default, will be updated if status is 'Sent'
+      failedCount: 0, // Default
     };
     
-    if (newCampaignData.status === 'Sent') {
-        const successRate = Math.random() * 0.4 + 0.6; 
+    // If campaign is created directly as 'Sent', calculate sent/failed counts
+    if (newCampaignData.status === 'Sent' && newCampaignData.audienceSize > 0) {
+        const successRate = Math.random() * 0.4 + 0.6; // 60-100% success
         newCampaignData.sentCount = Math.floor(newCampaignData.audienceSize * successRate);
         newCampaignData.failedCount = newCampaignData.audienceSize - newCampaignData.sentCount;
+    } else if (newCampaignData.status === 'Sent' && newCampaignData.audienceSize === 0) {
+        newCampaignData.sentCount = 0;
+        newCampaignData.failedCount = 0;
     }
+
 
     const campaignsCol = collection(db, 'campaigns');
     const docRef = await addDoc(campaignsCol, newCampaignData);
@@ -95,11 +100,16 @@ export async function POST(request: Request) {
         createdAt: newCampaignData.createdAt.toDate().toISOString(),
         // No updatedAt on creation initially
     };
+
+    // Also add to in-memory store for fallback consistency
+    addInMemoryDummyCampaign(createdCampaignResponse);
     
     return NextResponse.json(createdCampaignResponse, { status: 201 });
 
   } catch (error) {
     console.error("Error creating campaign in Firebase:", error);
+    // Attempt to remove from dummy store if Firebase add failed? Or leave it?
+    // For now, focus on the error being Firebase related.
     return NextResponse.json({ message: 'Failed to create campaign', error: (error as Error).message }, { status: 500 });
   }
 }
