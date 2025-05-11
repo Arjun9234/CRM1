@@ -98,32 +98,17 @@ const initialDummyCampaigns: Campaign[] = [
 let mutableDummyCampaigns: Campaign[] = JSON.parse(JSON.stringify(initialDummyCampaigns));
 
 export function getInMemoryDummyCampaigns(): Campaign[] {
-  // Filter out any campaign with the specific name "Indo-Pak War Game"
-  // This ensures that if it was added dynamically, it won't be shown.
-  // The initialDummyCampaigns list itself does not contain it.
-  const filteredCampaigns = mutableDummyCampaigns.filter(
-    campaign => campaign.name !== "Indo-Pak War Game"
-  );
-  // Return a deep copy of the filtered and sorted campaigns
-  return JSON.parse(JSON.stringify(filteredCampaigns.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())));
+  // Return a deep copy of the sorted campaigns
+  return JSON.parse(JSON.stringify(mutableDummyCampaigns.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())));
 }
 
 export function findInMemoryDummyCampaign(id: string): Campaign | undefined {
   const campaign = mutableDummyCampaigns.find(c => c.id === id);
-  if (campaign && campaign.name === "Indo-Pak War Game") {
-      return undefined; // Do not return the filtered out campaign
-  }
   return campaign ? JSON.parse(JSON.stringify(campaign)) : undefined;
 }
 
 export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
   const newCampaignToAdd: Campaign = { ...campaign };
-  // Prevent adding the specific campaign name if it's attempted through this function
-  if (newCampaignToAdd.name === "Indo-Pak War Game") {
-    console.warn("Attempted to add a filtered campaign name. Operation skipped.");
-    // Return the original campaign or handle as an error/noop
-    return campaign; 
-  }
   mutableDummyCampaigns.unshift(newCampaignToAdd); 
   return JSON.parse(JSON.stringify(newCampaignToAdd));
 }
@@ -131,12 +116,6 @@ export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
 export function updateInMemoryDummyCampaign(id: string, payload: CampaignUpdatePayload): Campaign | null {
   const index = mutableDummyCampaigns.findIndex(c => c.id === id);
   if (index > -1) {
-    // Prevent updating a campaign to the filtered name
-    if (payload.name === "Indo-Pak War Game" && mutableDummyCampaigns[index].name !== "Indo-Pak War Game") {
-        console.warn("Attempted to update campaign to a filtered name. Name update skipped.");
-        delete payload.name; // Remove the problematic name change from the payload
-    }
-
     const updatedCampaignData = { 
         ...mutableDummyCampaigns[index], 
         ...payload, 
@@ -161,10 +140,6 @@ export function updateInMemoryDummyCampaign(id: string, payload: CampaignUpdateP
     }
     
     mutableDummyCampaigns[index] = updatedCampaignData as Campaign;
-    // If the updated campaign is the one to be filtered, don't return it from this function either
-    if (mutableDummyCampaigns[index].name === "Indo-Pak War Game") {
-        return null;
-    }
     return JSON.parse(JSON.stringify(mutableDummyCampaigns[index]));
   }
   return null;
@@ -177,7 +152,6 @@ export function deleteInMemoryDummyCampaign(id: string): boolean {
 }
 
 export function resetInMemoryDummyCampaigns() {
-  // initialDummyCampaigns is already clean (does not contain "Indo-Pak War Game")
   mutableDummyCampaigns = JSON.parse(JSON.stringify(initialDummyCampaigns));
 }
 
