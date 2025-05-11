@@ -1,4 +1,3 @@
-
 "use client";
 
 import AppLayout from "@/components/layout/app-layout";
@@ -56,6 +55,18 @@ const statusBadgeVariant = (status: Campaign['status']) => {
         case 'Archived': return 'bg-gray-600 hover:bg-gray-700 text-white';
         default: return 'secondary';
     }
+};
+
+const operatorDisplayMap: Record<string, string> = {
+  eq: '=',
+  neq: '!=',
+  gt: '>',
+  lt: '<',
+  gte: '>=',
+  lte: '<=',
+  contains: 'contains',
+  startsWith: 'starts with',
+  endsWith: 'ends with',
 };
 
 export default function CampaignDetailPage() {
@@ -286,7 +297,7 @@ export default function CampaignDetailPage() {
                     {campaign.rules.map((rule: SegmentRule) => (
                     <li key={rule.id} className="p-3 border rounded-md bg-muted/50">
                         <span className="font-medium text-primary">{rule.field}</span>{' '}
-                        <span className="text-muted-foreground">{rule.operator}</span>{' '}
+                        <span className="text-muted-foreground font-mono">{operatorDisplayMap[rule.operator.toLowerCase()] || rule.operator}</span>{' '}
                         <span className="font-medium text-primary">{rule.value}</span>
                     </li>
                     ))}
@@ -303,4 +314,3 @@ export default function CampaignDetailPage() {
     </AppLayout>
   );
 }
-

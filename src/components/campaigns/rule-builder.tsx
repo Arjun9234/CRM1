@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { SegmentRule } from "@/lib/types";
@@ -29,17 +28,19 @@ const availableFields = [
 
 const operatorsByFieldType: Record<string, { value: string; label: string }[]> = {
   number: [
-    { value: "eq", label: "Equals (=)" },
-    { value: "gt", label: "Greater than (>)" },
-    { value: "lt", label: "Less than (<)" },
-    { value: "gte", label: "Greater than or equal to (>=)" },
-    { value: "lte", label: "Less than or equal to (<=)" },
+    { value: "eq", label: "=" },
+    { value: "neq", label: "!=" },
+    { value: "gt", label: ">" },
+    { value: "lt", label: "<" },
+    { value: "gte", label: ">=" },
+    { value: "lte", label: "<=" },
   ],
   string: [
-    { value: "eq", label: "Equals" },
-    { value: "contains", label: "Contains" },
-    { value: "startsWith", label: "Starts with" },
-    { value: "endsWith", label: "Ends with" },
+    { value: "eq", label: "=" },
+    { value: "neq", label: "!=" },
+    { value: "contains", label: "contains" },
+    { value: "startsWith", label: "starts with" },
+    { value: "endsWith", label: "ends with" },
   ],
 };
 

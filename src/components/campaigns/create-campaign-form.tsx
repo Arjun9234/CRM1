@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { CampaignCreationPayload, SegmentRule } from "@/lib/types";
@@ -42,6 +41,20 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<any> {
   return response.json();
 }
 
+const symbolToShortCodeMap: Record<string, string> = {
+  '=': 'eq',
+  '==': 'eq',
+  '!=': 'neq',
+  '<>': 'neq',
+  '>': 'gt',
+  '<': 'lt',
+  '>=': 'gte',
+  '<=': 'lte',
+  'contains': 'contains',
+  'starts_with': 'startsWith',
+  'ends_with': 'endsWith',
+};
+
 
 export function CreateCampaignForm() {
   const [campaignName, setCampaignName] = useState("");
@@ -79,16 +92,19 @@ export function CreateCampaignForm() {
   const handleNlpRuleGenerated = (ruleText: string) => {
     const parts = ruleText.match(/(\w+)\s*([<>=!]+|contains|starts_with|ends_with)\s*(.+)/i);
     if (parts && parts.length === 4) {
+        const parsedOperator = parts[2].trim().toLowerCase();
+        const shortCodeOperator = symbolToShortCodeMap[parsedOperator] || parsedOperator;
+
         const newRule: SegmentRule = {
             id: Date.now().toString(),
             field: parts[1].trim(),
-            operator: parts[2].trim(),
+            operator: shortCodeOperator, // Store the short code
             value: parts[3].trim().replace(/^['"]|['"]$/g, ''),
         };
         setRules(prevRules => [...prevRules, newRule]);
         toast({ title: "Rule Added", description: "AI suggested rule has been added to the builder." });
     } else {
-        toast({ title: "Could not parse rule", description: "The AI suggested rule format was not recognized. Please add manually.", variant: "destructive", duration: 5000 });
+        toast({ title: "Could not parse rule", description: `The AI suggested rule format ("${ruleText}") was not recognized. Please add manually.`, variant: "destructive", duration: 5000 });
     }
   };
 
@@ -127,33 +143,19 @@ export function CreateCampaignForm() {
       return;
     }
 
-    // Audience size is now estimated by AudiencePreview and passed into the payload
-    // The actual calculation might be more complex and happen server-side in a real app.
-    // For now, we rely on the AudiencePreview's mock calculation being stored in `audienceSize` state.
-
     const newCampaignPayload: CampaignCreationPayload = {
       name: campaignName,
       segmentName: segmentName,
       rules: rules, 
       ruleLogic: ruleLogic,
       message: message,
-      status: "Scheduled", // Default status for new campaigns
-      audienceSize: audienceSize, // Use the estimated audience size
+      status: "Scheduled", 
+      audienceSize: audienceSize, 
     };
     
     mutation.mutate(newCampaignPayload);
   };
   
-  // Update audienceSize state when AudiencePreview calculates it
-  // This is a bit of a workaround; ideally AudiencePreview would call a prop function.
-  // For now, assuming AudiencePreview's internal state is the source of truth for display,
-  // and we pass it on submit. Let's make AudiencePreview take an onSizeChange prop.
-  // (AudiencePreview itself doesn't expose its calculated size, so this needs adjustment in AudiencePreview if we want CreateCampaignForm to have the size before submit)
-  // For now, let's just mock audienceSize in submit. A better solution would be to lift state up from AudiencePreview.
-  // Let's just fix a value for audienceSize for now, to be improved.
-  // The `AudiencePreview` component's audience size is self-contained. For the form to use it,
-  // `AudiencePreview` would need to call back `CreateCampaignForm` with the new size.
-  // For simplicity, I'll update AudiencePreview to accept an `onAudienceSizeChange` callback.
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8">

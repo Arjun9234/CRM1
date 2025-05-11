@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Campaign, CampaignUpdatePayload, SegmentRule } from "@/lib/types";
@@ -45,6 +44,20 @@ async function updateCampaign(campaignId: string, payload: CampaignUpdatePayload
 interface EditCampaignFormProps {
   existingCampaign: Campaign;
 }
+
+const symbolToShortCodeMap: Record<string, string> = {
+  '=': 'eq',
+  '==': 'eq',
+  '!=': 'neq',
+  '<>': 'neq',
+  '>': 'gt',
+  '<': 'lt',
+  '>=': 'gte',
+  '<=': 'lte',
+  'contains': 'contains',
+  'starts_with': 'startsWith',
+  'ends_with': 'endsWith',
+};
 
 export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
   const [campaignName, setCampaignName] = useState(existingCampaign.name);
@@ -96,16 +109,19 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
   const handleNlpRuleGenerated = (ruleText: string) => {
     const parts = ruleText.match(/(\w+)\s*([<>=!]+|contains|starts_with|ends_with)\s*(.+)/i);
     if (parts && parts.length === 4) {
+        const parsedOperator = parts[2].trim().toLowerCase();
+        const shortCodeOperator = symbolToShortCodeMap[parsedOperator] || parsedOperator;
+        
         const newRule: SegmentRule = {
             id: Date.now().toString(),
             field: parts[1].trim(),
-            operator: parts[2].trim(),
+            operator: shortCodeOperator, // Store the short code
             value: parts[3].trim().replace(/^['"]|['"]$/g, ''),
         };
         setRules(prevRules => [...prevRules, newRule]);
         toast({ title: "Rule Added", description: "AI suggested rule has been added to the builder." });
     } else {
-        toast({ title: "Could not parse rule", description: "The AI suggested rule format was not recognized. Please add manually.", variant: "destructive", duration: 5000 });
+        toast({ title: "Could not parse rule", description: `The AI suggested rule format ("${ruleText}") was not recognized. Please add manually.`, variant: "destructive", duration: 5000 });
     }
   };
 
@@ -265,4 +281,3 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
     </form>
   );
 }
-
