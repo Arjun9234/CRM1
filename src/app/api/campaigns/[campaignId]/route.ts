@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { doc, getDoc, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Campaign, CampaignUpdatePayload } from '@/lib/types';
+import type { Campaign, CampaignUpdatePayload, SegmentRule } from '@/lib/types'; // Added SegmentRule for explicit mapping
 import { z } from 'zod';
 
 // Zod schema for validation (partial for updates)
@@ -44,17 +44,28 @@ export async function GET(
     }
 
     const data = campaignDoc.data();
+    
+    // Explicitly map fields to the Campaign type
     const campaign: Campaign = {
       id: campaignDoc.id,
-      ...data,
-      createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
-      updatedAt: (data.updatedAt as Timestamp)?.toDate().toISOString(),
-    } as Campaign;
+      name: data.name,
+      segmentName: data.segmentName, // This is optional in Campaign type
+      rules: data.rules as SegmentRule[], // Assuming rules is always present and matches SegmentRule[]
+      ruleLogic: data.ruleLogic,
+      message: data.message,
+      createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(), // Fallback for createdAt
+      updatedAt: data.updatedAt ? (data.updatedAt as Timestamp).toDate().toISOString() : undefined, // Correctly handle optional updatedAt
+      status: data.status,
+      audienceSize: data.audienceSize,
+      sentCount: data.sentCount,
+      failedCount: data.failedCount,
+    };
 
     return NextResponse.json(campaign);
   } catch (error) {
     console.error(`Error fetching campaign ${params.campaignId}:`, error);
-    return NextResponse.json({ message: 'Failed to fetch campaign', error: (error as Error).message }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ message: 'Failed to fetch campaign', error: errorMessage }, { status: 500 });
   }
 }
 
@@ -92,7 +103,8 @@ export async function PUT(
     return NextResponse.json({ message: 'Campaign updated successfully', id: campaignId });
   } catch (error) {
     console.error(`Error updating campaign ${params.campaignId}:`, error);
-    return NextResponse.json({ message: 'Failed to update campaign', error: (error as Error).message }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ message: 'Failed to update campaign', error: errorMessage }, { status: 500 });
   }
 }
 
@@ -118,6 +130,7 @@ export async function DELETE(
     return NextResponse.json({ message: 'Campaign deleted successfully' });
   } catch (error) {
     console.error(`Error deleting campaign ${params.campaignId}:`, error);
-    return NextResponse.json({ message: 'Failed to delete campaign', error: (error as Error).message }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ message: 'Failed to delete campaign', error: errorMessage }, { status: 500 });
   }
 }
