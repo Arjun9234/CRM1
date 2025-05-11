@@ -164,6 +164,7 @@ export function findInMemoryDummyCampaign(id: string): Campaign | undefined {
 export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
   const newCampaignToAdd: Campaign = JSON.parse(JSON.stringify(campaign));
 
+  // Ensure createdAt and updatedAt are set if not already (they should be by the API)
   if (!newCampaignToAdd.createdAt) {
     newCampaignToAdd.createdAt = new Date().toISOString();
   }
@@ -173,15 +174,16 @@ export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
   
   const audience = newCampaignToAdd.audienceSize || 0;
   if (newCampaignToAdd.status === 'Sent') {
+      // Ensure sent/failed counts are calculated if not provided or if they don't match audience size
       if (audience > 0 && (newCampaignToAdd.sentCount === undefined || newCampaignToAdd.failedCount === undefined || (newCampaignToAdd.sentCount + newCampaignToAdd.failedCount !== audience))) {
           const successRate = Math.random() * 0.20 + 0.75; 
           newCampaignToAdd.sentCount = Math.floor(audience * successRate);
           newCampaignToAdd.failedCount = audience - newCampaignToAdd.sentCount;
-      } else if (audience === 0) {
+      } else if (audience === 0) { // If audience is 0, counts must be 0
           newCampaignToAdd.sentCount = 0;
           newCampaignToAdd.failedCount = 0;
       }
-  } else { // For non-Sent statuses, ensure counts are 0 if not provided (or explicitly set them)
+  } else { // For non-Sent statuses, ensure counts are 0 if not explicitly set otherwise
       if (newCampaignToAdd.sentCount === undefined) newCampaignToAdd.sentCount = 0;
       if (newCampaignToAdd.failedCount === undefined) newCampaignToAdd.failedCount = 0;
   }
@@ -189,9 +191,11 @@ export function addInMemoryDummyCampaign(campaign: Campaign): Campaign {
 
   const existingIndex = campaignsDB.findIndex(c => c.id === newCampaignToAdd.id);
   if (existingIndex > -1) {
+    // If campaign with same ID exists (e.g., due to quick succession of updates or reprocessing), update it.
     campaignsDB[existingIndex] = newCampaignToAdd;
   } else {
-    campaignsDB.unshift(newCampaignToAdd);
+    // Add new campaign to the end of the array.
+    campaignsDB.push(newCampaignToAdd);
   }
   return JSON.parse(JSON.stringify(newCampaignToAdd));
 }
@@ -261,3 +265,4 @@ export function resetInMemoryDummyCampaigns() {
 }
 // The campaignsDB is initialized above using the global key logic, so no explicit reset call here is needed on module load.
 // This function can be used if an explicit reset is needed during runtime for testing.
+
