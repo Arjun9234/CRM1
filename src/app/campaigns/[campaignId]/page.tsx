@@ -1,3 +1,4 @@
+
 "use client";
 
 import AppLayout from "@/components/layout/app-layout";
@@ -12,10 +13,10 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription,
+  AlertDialogDescription as AlertDialogPrimitiveDescription, // Aliased to avoid conflict
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialogTitle as AlertDialogPrimitiveTitle, // Aliased to avoid conflict
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { ArrowLeft, Users, CheckCircle, XCircle, Target, CalendarDays, MessageSquare, SlidersHorizontal, AlertTriangle, BarChart, Edit3, Trash2, Loader2, Ban } from "lucide-react";
@@ -76,7 +77,7 @@ export default function CampaignDetailPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const campaignId = params.campaignId as string;
-  const [isDeleteDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false); // Corrected useState destructuring
 
   const { data: campaign, isLoading, error, isError } = useQuery({
     queryKey: ['campaign', campaignId],
@@ -93,6 +94,7 @@ export default function CampaignDetailPage() {
       });
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       router.push('/dashboard');
+      setIsDeleteDialogOpen(false); // Close dialog on success
     },
     onError: (error: Error) => {
       toast({
@@ -100,7 +102,7 @@ export default function CampaignDetailPage() {
         description: error.message,
         variant: "destructive",
       });
-      setIsDeleteDialogOpen(false);
+      setIsDeleteDialogOpen(false); // Close dialog on error as well
     },
   });
 
@@ -178,7 +180,7 @@ export default function CampaignDetailPage() {
             <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)}>
                 <Edit3 className="mr-2 h-4 w-4"/> Edit
             </Button>
-            <AlertDialog open={isDeleteDialogOpen} onOpenChange={() => {}}>
+            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}> {/* Corrected onOpenChange */}
               <AlertDialogTrigger asChild>
                  <Button variant="destructive">
                     <Trash2 className="mr-2 h-4 w-4"/> Delete
@@ -186,11 +188,11 @@ export default function CampaignDetailPage() {
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
+                  <AlertDialogPrimitiveTitle>Are you sure?</AlertDialogPrimitiveTitle> {/* Use aliased import */}
+                  <AlertDialogPrimitiveDescription> {/* Use aliased import */}
                     This action cannot be undone. This will permanently delete the campaign
                     "{campaign.name}".
-                  </AlertDialogDescription>
+                  </AlertDialogPrimitiveDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
@@ -317,3 +319,4 @@ export default function CampaignDetailPage() {
       </div>
     </AppLayout>
   );
+}
