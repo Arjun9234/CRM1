@@ -36,23 +36,34 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
   });
 
   if (!response.ok) {
-    let errorData;
+    let errorPayload: { message: string } = { message: `Failed to create campaign (status: ${response.status})` };
     try {
-      errorData = await response.json(); // Try to parse as JSON
+      const parsedError = await response.json();
+      // API returns { message: "Failed to create campaign", error: "details" } 
+      // OR { message: "Invalid campaign data", errors: ZodFieldErrors }
+      if (parsedError.message && parsedError.error) { 
+        errorPayload.message = `API Error: ${parsedError.message} - ${parsedError.error}`;
+      } else if (parsedError.message && parsedError.errors) { 
+        // Flatten Zod errors for better readability if possible, or stringify
+        const errorDetails = Object.entries(parsedError.errors)
+            .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
+            .join('; ');
+        errorPayload.message = `Invalid data: ${parsedError.message}. Details: ${errorDetails}`;
+      } else if (parsedError.message) {
+        errorPayload.message = parsedError.message;
+      }
     } catch (e) {
-      // If parsing as JSON fails, it means the response was not JSON (e.g., HTML error page)
-      const errorText = await response.text(); 
+      // Non-JSON response
+      const errorText = await response.text();
       console.error("Server returned non-JSON error response:", response.status, errorText);
-      // Provide a more generic error or attempt to extract info from errorText if feasible
-      throw new Error(`Server error: ${response.status}. Failed to create campaign.`);
+      errorPayload.message = `Server error ${response.status}. Response: ${errorText.substring(0,100)}... See console for full details.`;
     }
-    throw new Error(errorData.message || `Failed to create campaign (status: ${response.status})`);
+    throw new Error(errorPayload.message);
   }
 
   try {
     return await response.json();
   } catch (e) {
-    // This case should be rare if the server API route for success always returns JSON
     console.error("Server returned OK, but with non-JSON success response:", response.status, await response.text());
     throw new Error("Received an invalid success response from the server.");
   }
@@ -95,14 +106,16 @@ export function CreateCampaignForm() {
         description: `${data.name || campaignName} has been successfully scheduled.`,
       });
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-      queryClient.invalidateQueries({ queryKey: ['campaign', data.id] });
+      // It's good practice to also invalidate the specific campaign query if you have one for its detail page
+      queryClient.invalidateQueries({ queryKey: ['campaign', data.id] }); 
       router.push("/dashboard");
     },
     onError: (error: Error) => {
       toast({
         title: "Failed to Create Campaign",
-        description: error.message,
+        description: error.message, // This will now have more details from the createCampaign function
         variant: "destructive",
+        duration: 7000, // Longer duration for detailed errors
       });
     },
   });
@@ -281,4 +294,3 @@ export function CreateCampaignForm() {
     </form>
   );
 }
-
