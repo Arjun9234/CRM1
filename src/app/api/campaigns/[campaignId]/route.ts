@@ -103,16 +103,24 @@ export async function PUT(
     const campaignDocSnapshot = await getDoc(campaignDocRef);
 
     if (campaignDocSnapshot.exists()) {
-      const dataForFirebaseUpdate = {
+      const dataForFirebaseUpdate: Record<string, any> = { // Use a more general type for intermediate object
         ...validatedDataToUpdate,
         updatedAt: Timestamp.now(),
       };
-      // If status changes to 'Sent' and sent/failed counts are not provided, simulate them
-      if (validatedDataToUpdate.status === 'Sent' && validatedDataToUpdate.audienceSize !== undefined && validatedDataToUpdate.sentCount === undefined && validatedDataToUpdate.failedCount === undefined) {
-        const audienceSize = validatedDataToUpdate.audienceSize;
-        const successRate = Math.random() * 0.4 + 0.6; // 60-100% success
-        dataForFirebaseUpdate.sentCount = Math.floor(audienceSize * successRate);
-        dataForFirebaseUpdate.failedCount = audienceSize - dataForFirebaseUpdate.sentCount;
+      
+      // If status changes to 'Sent' and sent/failed counts are not provided in payload, calculate them.
+      // Use existing audienceSize from snapshot if not in payload for this calculation.
+      if (validatedDataToUpdate.status === 'Sent' && 
+          (validatedDataToUpdate.sentCount === undefined || validatedDataToUpdate.failedCount === undefined)) {
+        const audienceSize = validatedDataToUpdate.audienceSize ?? campaignDocSnapshot.data()?.audienceSize ?? 0;
+        if (audienceSize > 0) { // Only calculate if audience size is known and positive
+            const successRate = Math.random() * 0.4 + 0.6; // 60-100% success
+            dataForFirebaseUpdate.sentCount = Math.floor(audienceSize * successRate);
+            dataForFirebaseUpdate.failedCount = audienceSize - dataForFirebaseUpdate.sentCount;
+        } else {
+            dataForFirebaseUpdate.sentCount = 0;
+            dataForFirebaseUpdate.failedCount = 0;
+        }
       }
 
 
@@ -122,7 +130,17 @@ export async function PUT(
 
       await updateDoc(campaignDocRef, cleanedDataForFirebase);
       
-      const updatedDocSnapshot = await getDoc(campaignDocRef);
+      // Also update the in-memory store to keep it in sync
+      // We pass validatedDataToUpdate because updateInMemoryDummyCampaign handles merging and calculations internally.
+      // It will use its existing knowledge of the campaign for audienceSize if not in validatedDataToUpdate for sent/failed calcs.
+      const updatedInMemory = updateInMemoryDummyCampaign(campaignId, validatedDataToUpdate);
+      if (updatedInMemory) {
+          console.log(`In-memory store updated for campaign ${campaignId} after Firebase success.`);
+      } else {
+          console.warn(`Failed to find/update in-memory store for campaign ${campaignId} after Firebase success, but Firebase was updated.`);
+      }
+      
+      const updatedDocSnapshot = await getDoc(campaignDocRef); // Fetch the truly updated doc from Firebase for response
       const updatedDocData = updatedDocSnapshot.data();
       
       const responseData = { 
@@ -133,17 +151,11 @@ export async function PUT(
       };
       return NextResponse.json(responseData);
 
-    } else {
+    } else { // Campaign does not exist in Firebase, try updating dummy store
       const cleanedDataForDummyStore = Object.fromEntries(
         Object.entries(validatedDataToUpdate).filter(([_, v]) => v !== undefined)
       ) as CampaignUpdatePayload;
-       // Simulate sent/failed counts for dummy store if status is 'Sent'
-      if (cleanedDataForDummyStore.status === 'Sent' && cleanedDataForDummyStore.audienceSize !== undefined && cleanedDataForDummyStore.sentCount === undefined && cleanedDataForDummyStore.failedCount === undefined) {
-        const audienceSize = cleanedDataForDummyStore.audienceSize;
-        const successRate = Math.random() * 0.4 + 0.6;
-        cleanedDataForDummyStore.sentCount = Math.floor(audienceSize * successRate);
-        cleanedDataForDummyStore.failedCount = audienceSize - cleanedDataForDummyStore.sentCount;
-      }
+      
       const updatedDummyCampaign = updateInMemoryDummyCampaign(campaignId, cleanedDataForDummyStore);
       if (updatedDummyCampaign) {
         console.warn(`Campaign ${campaignId} not in Firebase, updated in-memory dummy data.`);
@@ -154,6 +166,7 @@ export async function PUT(
   } catch (error) { 
     console.error(`Error during PUT operation for campaign ${campaignId}:`, error);
     
+    // Fallback: Try to update dummy store even on Firebase error, if it's not a 'not found' type error
     let isFirebaseSpecificError = true; 
     if (error instanceof Error && error.message.toLowerCase().includes("not found")) {
         isFirebaseSpecificError = false; 
@@ -164,18 +177,11 @@ export async function PUT(
             const cleanedDataForDummyStoreFallback = Object.fromEntries(
                 Object.entries(validatedDataToUpdate).filter(([_, v]) => v !== undefined)
             ) as CampaignUpdatePayload;
-
-            if (cleanedDataForDummyStoreFallback.status === 'Sent' && cleanedDataForDummyStoreFallback.audienceSize !== undefined && cleanedDataForDummyStoreFallback.sentCount === undefined && cleanedDataForDummyStoreFallback.failedCount === undefined) {
-                const audienceSize = cleanedDataForDummyStoreFallback.audienceSize;
-                const successRate = Math.random() * 0.4 + 0.6;
-                cleanedDataForDummyStoreFallback.sentCount = Math.floor(audienceSize * successRate);
-                cleanedDataForDummyStoreFallback.failedCount = audienceSize - cleanedDataForDummyStoreFallback.sentCount;
-            }
-
-            const updatedDummyCampaign = updateInMemoryDummyCampaign(campaignId, cleanedDataForDummyStoreFallback);
-            if (updatedDummyCampaign) {
+            
+            const updatedDummyCampaignFallback = updateInMemoryDummyCampaign(campaignId, cleanedDataForDummyStoreFallback);
+            if (updatedDummyCampaignFallback) {
                 console.warn(`Firebase error for campaign ${campaignId}. Updated in-memory dummy data as fallback.`);
-                return NextResponse.json(updatedDummyCampaign);
+                return NextResponse.json(updatedDummyCampaignFallback);
             }
         } catch (fallbackError) {
             console.error(`Error updating in-memory dummy campaign ${campaignId} during fallback:`, fallbackError);
@@ -202,7 +208,6 @@ export async function DELETE(
 
     if (campaignDoc.exists()) {
       await deleteDoc(campaignDocRef);
-      // Attempt to delete from dummy store as well to keep them in sync if Firebase was primary
       deleteInMemoryDummyCampaign(campaignId); 
       return NextResponse.json({ message: 'Campaign deleted successfully from Firebase' });
     } else {
