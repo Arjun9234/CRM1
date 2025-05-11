@@ -32,6 +32,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           name: firebaseUser.displayName,
           email: firebaseUser.email,
           image: firebaseUser.photoURL,
+          createdAt: firebaseUser.metadata.creationTime, // Get creation time
+          // bio and company would typically come from a Firestore user profile document,
+          // not directly from Firebase Auth user object, unless stored in custom claims or similar.
+          // For simplicity, they are not populated from Firebase Auth here but can be set by mock login.
         };
         setUser(appUser);
         localStorage.removeItem(MOCK_AUTH_STORAGE_KEY); // Clear mock auth if Firebase auth is active
@@ -67,7 +71,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       id: `mock_${Date.now().toString()}`, // Mock ID
       name, 
       email, 
-      image: `https://picsum.photos/seed/${encodeURIComponent(email)}/40/40` 
+      image: `https://picsum.photos/seed/${encodeURIComponent(email)}/100/100` ,
+      createdAt: new Date().toISOString(), // Mock creation time
+      bio: "Enthusiastic EngageSphere user!", // Mock bio
+      company: "Mock Solutions Ltd." // Mock company
     };
     setUser(mockUser);
     localStorage.setItem(MOCK_AUTH_STORAGE_KEY, JSON.stringify(mockUser));
@@ -95,3 +102,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     </AuthContext.Provider>
   );
 }
+

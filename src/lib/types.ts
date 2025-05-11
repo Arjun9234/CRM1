@@ -1,9 +1,13 @@
 
+
 export interface User {
   id: string; // uid from Firebase Auth
   name?: string | null;
   email?: string | null;
   image?: string | null;
+  bio?: string | null; // Optional: For user profile bio
+  company?: string | null; // Optional: For user profile company
+  createdAt?: string | null; // Optional: ISO date string when user was created
 }
 
 export interface SegmentRule {
@@ -91,3 +95,4 @@ export interface DeliveryReceipt {
   status: 'SENT' | 'FAILED';
   timestamp: string;
 }
+

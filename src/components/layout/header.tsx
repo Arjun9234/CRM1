@@ -28,8 +28,8 @@ export function Header() {
   };
   
   const getInitials = (name?: string | null) => {
-    if (!name) return "CR";
-    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+    if (!name) return "CR"; // EngageSphere initials or a generic fallback
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0,2);
   }
 
   return (
@@ -39,7 +39,7 @@ export function Header() {
       </div>
       <div className="flex-1">
         {/* Optionally, add a search bar or breadcrumbs here */}
-        {/* <h1 className="text-lg font-semibold">CRM</h1> */}
+        {/* <h1 className="text-lg font-semibold">EngageSphere</h1> */}
       </div>
       <div className="flex items-center gap-4">
         <ThemeToggle />
@@ -63,14 +63,22 @@ export function Header() {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <UserCircle className="mr-2 h-4 w-4" />
-                <span>Profile</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Settings className="mr-2 h-4 w-4" />
-                <span>Settings</span>
-              </DropdownMenuItem>
+              <Link href="/profile" passHref legacyBehavior>
+                <DropdownMenuItem asChild>
+                  <a>
+                    <UserCircle className="mr-2 h-4 w-4" />
+                    <span>Profile</span>
+                  </a>
+                </DropdownMenuItem>
+              </Link>
+              <Link href="/settings" passHref legacyBehavior>
+                 <DropdownMenuItem asChild>
+                    <a>
+                        <Settings className="mr-2 h-4 w-4" />
+                        <span>Settings</span>
+                    </a>
+                </DropdownMenuItem>
+              </Link>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout}>
                 <LogOut className="mr-2 h-4 w-4" />
@@ -83,3 +91,4 @@ export function Header() {
     </header>
   );
 }
+
