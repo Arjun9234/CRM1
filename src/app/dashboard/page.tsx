@@ -1,4 +1,3 @@
-
 "use client";
 
 import AppLayout from "@/components/layout/app-layout";
@@ -17,7 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Terminal } from "lucide-react";
 
 async function fetchCampaigns(): Promise<Campaign[]> {
-  const response = await fetch('/api/campaigns');
+  const response = await fetch('/api/campaigns', { cache: 'no-store' });
   if (!response.ok) {
     const errorData = await response.json();
     throw new Error(errorData.message || 'Failed to fetch campaigns');
@@ -123,3 +122,4 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
+
