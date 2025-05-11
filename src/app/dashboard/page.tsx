@@ -12,8 +12,64 @@ import { KeyMetricsDisplay } from "@/components/dashboard/KeyMetricsDisplay";
 import { CampaignPerformanceChart } from "@/components/dashboard/CampaignPerformanceChart";
 import { MarketingTipsWidget } from "@/components/dashboard/MarketingTipsWidget";
 import { Skeleton } from "@/components/ui/skeleton";
+import { subDays, formatISO } from 'date-fns';
 
-const CAMPAIGNS_STORAGE_KEY = 'miniature-genius-campaigns';
+const CAMPAIGNS_STORAGE_KEY = 'miniature-genius-campaigns'; // Using existing key for consistency
+
+const generateDummyCampaigns = (): Campaign[] => {
+  const now = new Date();
+  return [
+    {
+      id: "dummy-campaign-1",
+      name: "Spring Welcome Offer",
+      segmentId: "seg-spring-welcome",
+      segmentName: "New Subscribers - March",
+      message: "Welcome to our community! Enjoy 15% off your first purchase this spring. Use code SPRING15.",
+      createdAt: formatISO(subDays(now, 20)),
+      status: 'Sent',
+      audienceSize: 1250,
+      sentCount: 1180,
+      failedCount: 70,
+    },
+    {
+      id: "dummy-campaign-2",
+      name: "Weekend Flash Sale",
+      segmentId: "seg-flash-sale-active",
+      segmentName: "Active Users - Last 30 Days",
+      message: "Don't miss out! Our Weekend Flash Sale is ON. Get up to 50% off selected items. Shop now!",
+      createdAt: formatISO(subDays(now, 10)),
+      status: 'Sent',
+      audienceSize: 3500,
+      sentCount: 3250,
+      failedCount: 250,
+    },
+    {
+      id: "dummy-campaign-3",
+      name: "Loyalty Rewards Update",
+      segmentId: "seg-loyalty-members",
+      segmentName: "Loyalty Program Members",
+      message: "Hi {customer_name}, exciting news! We've updated our loyalty program with even more benefits. Check them out!",
+      createdAt: formatISO(subDays(now, 5)),
+      status: 'Sent',
+      audienceSize: 850,
+      sentCount: 820,
+      failedCount: 30,
+    },
+    {
+      id: "dummy-campaign-4",
+      name: "Inactive User Re-engagement",
+      segmentId: "seg-inactive-90d",
+      segmentName: "Inactive Users (90+ days)",
+      message: "We miss you! Come back and discover what's new with a special 20% off coupon: COMEBACK20.",
+      createdAt: formatISO(subDays(now, 2)),
+      status: 'Sent',
+      audienceSize: 2100,
+      sentCount: 1890,
+      failedCount: 210,
+    },
+  ];
+};
+
 
 export default function DashboardPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -22,14 +78,32 @@ export default function DashboardPage() {
   useEffect(() => {
     try {
       const storedCampaigns = localStorage.getItem(CAMPAIGNS_STORAGE_KEY);
+      let activeCampaigns: Campaign[];
+
       if (storedCampaigns) {
         const parsedCampaigns: Campaign[] = JSON.parse(storedCampaigns);
-        // Sort campaigns by creation date, most recent first for chart
-        const sortedCampaigns = [...parsedCampaigns].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setCampaigns(sortedCampaigns);
+        // Ensure it's an array and not empty, otherwise use dummy data
+        if (Array.isArray(parsedCampaigns) && parsedCampaigns.length > 0) {
+          activeCampaigns = parsedCampaigns;
+        } else {
+          activeCampaigns = generateDummyCampaigns();
+          localStorage.setItem(CAMPAIGNS_STORAGE_KEY, JSON.stringify(activeCampaigns));
+        }
+      } else {
+        activeCampaigns = generateDummyCampaigns();
+        localStorage.setItem(CAMPAIGNS_STORAGE_KEY, JSON.stringify(activeCampaigns));
       }
+      
+      // Sort campaigns by creation date, most recent first for chart and list
+      const sortedCampaigns = [...activeCampaigns].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setCampaigns(sortedCampaigns);
+
     } catch (error) {
-      console.error("Failed to load campaigns from localStorage", error);
+      console.error("Failed to load or initialize campaigns from localStorage", error);
+      // Fallback to dummy data if parsing or storage fails catastrophically
+      const dummyData = generateDummyCampaigns();
+      const sortedDummyData = [...dummyData].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setCampaigns(sortedDummyData);
     } finally {
       setIsLoading(false);
     }
@@ -39,7 +113,12 @@ export default function DashboardPage() {
     const tc = campaigns.length;
     const tat = campaigns.reduce((sum, c) => sum + c.audienceSize, 0);
     const tss = campaigns.reduce((sum, c) => sum + c.sentCount, 0);
-    const osr = tat > 0 ? (tss / tat) * 100 : 0; // Success rate based on successfully sent / total audience targeted
+    // Ensure denominator is not zero for success rate calculation.
+    // Success is (total successfully sent / total attempted which is audience size in this model)
+    // For overall, we sum up all sent and all audience sizes.
+    const totalAttempted = campaigns.reduce((sum, c) => sum + c.audienceSize, 0);
+    const osr = totalAttempted > 0 ? (tss / totalAttempted) * 100 : 0; 
+    
     return { 
       totalCampaigns: tc, 
       totalAudienceTargeted: tat, 
@@ -96,6 +175,7 @@ export default function DashboardPage() {
 
       <div className="grid gap-6 lg:grid-cols-3 mb-8">
         <div className="lg:col-span-2">
+          {/* Pass the 7 most recent campaigns to the chart */}
           <CampaignPerformanceChart campaigns={campaigns.slice(0,7)} /> 
         </div>
         <div>
@@ -104,7 +184,9 @@ export default function DashboardPage() {
       </div>
       
       <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-foreground mb-6">Your Campaigns</h2>
-      <CampaignList campaigns={campaigns} />
+      {/* CampaignList will display all campaigns, sorted most recent first */}
+      <CampaignList campaigns={campaigns} /> 
     </AppLayout>
   );
 }
+
