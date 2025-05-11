@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { mainNavLinks } from "./nav-links";
 import { cn } from "@/lib/utils";
-import { Brain } from "lucide-react";
+import { Brain } from "lucide-react"; // Consider changing if Brain icon was tied to "Genius"
 import {
   Sidebar,
   SidebarHeader,
@@ -24,7 +24,7 @@ export function AppSidebar() {
       <SidebarHeader className="border-b">
         <Link href="/dashboard" className="flex items-center gap-2 font-semibold text-lg text-primary hover:text-accent transition-colors">
           <Brain className="h-7 w-7" />
-          <span className="group-data-[collapsible=icon]:hidden">Miniature Genius</span>
+          <span className="group-data-[collapsible=icon]:hidden">CRM</span>
         </Link>
       </SidebarHeader>
       <SidebarContent>

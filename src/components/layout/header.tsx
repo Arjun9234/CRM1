@@ -28,7 +28,7 @@ export function Header() {
   };
   
   const getInitials = (name?: string | null) => {
-    if (!name) return "MG";
+    if (!name) return "CR";
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   }
 
@@ -39,7 +39,7 @@ export function Header() {
       </div>
       <div className="flex-1">
         {/* Optionally, add a search bar or breadcrumbs here */}
-        {/* <h1 className="text-lg font-semibold">Miniature Genius</h1> */}
+        {/* <h1 className="text-lg font-semibold">CRM</h1> */}
       </div>
       <div className="flex items-center gap-4">
         <ThemeToggle />

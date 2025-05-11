@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Miniature Genius CRM',
+  title: 'CRM',
   description: 'A Mini CRM Platform by Firebase Studio',
 };
 

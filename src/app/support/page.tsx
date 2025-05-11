@@ -84,7 +84,7 @@ export default function SupportPage() {
                 Frequently Asked Questions (FAQ)
                 </CardTitle>
                 <CardDescription>
-                Find answers to common questions about Miniature Genius.
+                Find answers to common questions about CRM.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -122,7 +122,7 @@ export default function SupportPage() {
               <BookOpen className="h-16 w-16 text-muted-foreground mb-4" />
               <h2 className="text-2xl font-semibold text-muted-foreground">Knowledge Base Coming Soon!</h2>
               <p className="text-muted-foreground mt-2 max-w-md">
-                We're building a comprehensive library of articles and guides to help you get the most out of Miniature Genius.
+                We're building a comprehensive library of articles and guides to help you get the most out of CRM.
               </p>
             </div>
           </CardContent>

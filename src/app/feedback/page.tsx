@@ -49,7 +49,7 @@ export default function FeedbackPage() {
               Submit Your Feedback
             </CardTitle>
             <CardDescription>
-              We value your input! Let us know how we can improve Miniature Genius.
+              We value your input! Let us know how we can improve CRM.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

@@ -53,7 +53,7 @@ export function LoginForm() {
   return (
     <Card className="w-full max-w-md shadow-2xl">
       <CardHeader className="text-center">
-        <CardTitle className="text-3xl font-bold text-primary">Miniature Genius</CardTitle>
+        <CardTitle className="text-3xl font-bold text-primary">CRM</CardTitle>
         <CardDescription>Sign in to access your CRM dashboard</CardDescription>
       </CardHeader>
       <CardContent>
