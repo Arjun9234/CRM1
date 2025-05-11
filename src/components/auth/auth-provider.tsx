@@ -3,17 +3,16 @@
 
 import type { User as AppUser } from '@/lib/types'; // Renamed to avoid conflict with firebase User
 import React, { createContext, useState, useEffect, useCallback } from 'react';
-import { onAuthStateChanged, User as FirebaseUser, signInWithPopup } from 'firebase/auth';
-import { auth, googleProvider } from '@/lib/firebase'; // Assuming your firebase setup is here
+import { onAuthStateChanged, User as FirebaseUser, signInWithPopup, signOut, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'; // Added createUserWithEmailAndPassword, updateProfile, signOut
+import { auth, googleProvider } from '@/lib/firebase'; 
 
 interface AuthContextType {
   user: AppUser | null;
   isLoading: boolean;
-  // login and logout will be simplified as Firebase handles actual auth state
-  // For mock:
   login: (name: string, email: string) => Promise<void>; // Kept for existing mock login form
   logout: () => Promise<void>; 
   signInWithGoogle: () => Promise<void>;
+  signup: (name: string, email: string, password: string) => Promise<void>; // Added signup
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,8 +25,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
+      setIsLoading(true); // Set loading true at the start of auth state change
       if (firebaseUser) {
-        // User is signed in with Firebase
         const appUser: AppUser = {
           id: firebaseUser.uid,
           name: firebaseUser.displayName,
@@ -36,9 +35,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           createdAt: firebaseUser.metadata.creationTime, 
         };
         setUser(appUser);
-        localStorage.removeItem(MOCK_AUTH_STORAGE_KEY); // Clear mock auth if Firebase auth is active
+        localStorage.removeItem(MOCK_AUTH_STORAGE_KEY); 
       } else {
-        // User is signed out from Firebase, try loading mock user from localStorage
         try {
           const storedAuth = localStorage.getItem(MOCK_AUTH_STORAGE_KEY);
           if (storedAuth) {
@@ -52,26 +50,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
         }
       }
-      setIsLoading(false);
+      setIsLoading(false); // Set loading false after processing
     });
 
-    // Cleanup subscription on unmount
     return () => unsubscribe();
   }, []);
 
-  // Mock login function (remains for LoginForm, ideally LoginForm would use Firebase sign-in methods)
   const login = useCallback(async (name: string, email: string) => {
     setIsLoading(true);
-    // This simulates a non-Firebase login, storing to localStorage.
     await new Promise(resolve => setTimeout(resolve, 500));
     const mockUser: AppUser = { 
-      id: `mock_${Date.now().toString()}`, // Mock ID
+      id: `mock_${Date.now().toString()}`, 
       name, 
       email, 
       image: `https://picsum.photos/seed/${encodeURIComponent(email)}/100/100` ,
-      createdAt: new Date().toISOString(), // Mock creation time
-      bio: "Enthusiastic EngageSphere user!", // Mock bio
-      company: "Mock Solutions Ltd." // Mock company
+      createdAt: new Date().toISOString(), 
+      bio: "Enthusiastic EngageSphere user!", 
+      company: "Mock Solutions Ltd." 
     };
     setUser(mockUser);
     localStorage.setItem(MOCK_AUTH_STORAGE_KEY, JSON.stringify(mockUser));
@@ -82,36 +77,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     try {
       await signInWithPopup(auth, googleProvider);
-      // onAuthStateChanged will handle setting the user and clearing mock auth
+      // onAuthStateChanged will handle setting the user
     } catch (error) {
       console.error("Google Sign-In failed", error);
-      setIsLoading(false); // Ensure loading is stopped on error
-      throw error; // Re-throw to be caught by the calling component
+      setIsLoading(false); 
+      throw error; 
     }
-    // setIsLoading(false) will be handled by onAuthStateChanged listener
+    // setIsLoading(false) will be handled by onAuthStateChanged
   }, []);
 
-  // Logout function
+  const signup = useCallback(async (name: string, email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      if (userCredential.user) {
+        await updateProfile(userCredential.user, { displayName: name });
+        // Refresh the user to get the updated profile information, onAuthStateChanged will then pick it up.
+        // Or, we can manually set the user state here for immediate UI update,
+        // but onAuthStateChanged is generally preferred for consistency.
+        // For now, let onAuthStateChanged handle it by re-triggering after profile update.
+        // To force onAuthStateChanged to pick up the name change immediately:
+        const updatedFirebaseUser = auth.currentUser;
+        if (updatedFirebaseUser) {
+            const appUser: AppUser = {
+                id: updatedFirebaseUser.uid,
+                name: updatedFirebaseUser.displayName, // Should have the new name
+                email: updatedFirebaseUser.email,
+                image: updatedFirebaseUser.photoURL,
+                createdAt: updatedFirebaseUser.metadata.creationTime,
+            };
+            setUser(appUser);
+            localStorage.removeItem(MOCK_AUTH_STORAGE_KEY);
+        }
+      }
+    } catch (error) {
+      console.error("Firebase Signup Error:", error);
+      setIsLoading(false);
+      throw error;
+    } finally {
+       setIsLoading(false); // Ensure loading is false even if onAuthStateChanged is slow
+    }
+  }, []);
+
+
   const logout = useCallback(async () => {
     setIsLoading(true);
     try {
-        await auth.signOut(); 
+        await signOut(auth); // Use Firebase signOut
     } catch (e) {
         console.error("Firebase sign out error:", e);
     }
-    setUser(null);
-    localStorage.removeItem(MOCK_AUTH_STORAGE_KEY);
-    // setIsLoading(false) will be handled by onAuthStateChanged listener, 
-    // but good to ensure it's set if onAuthStateChanged doesn't fire quickly enough
-    // or if there was no Firebase user to begin with.
-    // However, onAuthStateChanged should fire with null, setting isLoading to false.
-    // For robustness, we can ensure it's set here if not relying purely on the listener for this specific state change.
-    // Let's rely on onAuthStateChanged for consistency. If issues arise, this can be revisited.
+    // onAuthStateChanged will set user to null and isLoading to false.
+    // If there was only a mock user, clear it.
+    if (localStorage.getItem(MOCK_AUTH_STORAGE_KEY)) {
+      setUser(null);
+      localStorage.removeItem(MOCK_AUTH_STORAGE_KEY);
+      setIsLoading(false); // Manually set if it was only mock
+    }
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, signInWithGoogle }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout, signInWithGoogle, signup }}>
       {children}
     </AuthContext.Provider>
   );
 }
+

@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link'; // Added Link import
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 
 
 export function LoginForm() {
-  const { login, signInWithGoogle } = useAuth();
+  const { login, signInWithGoogle, isLoading: authIsLoading } = useAuth(); // Renamed isLoading to authIsLoading
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -47,6 +48,7 @@ export function LoginForm() {
         description: "An error occurred during login. Please try again.",
         variant: "destructive",
       });
+    } finally {
       setIsEmailLoading(false);
     }
   };
@@ -55,14 +57,11 @@ export function LoginForm() {
     setIsGoogleLoading(true);
     try {
       await signInWithGoogle();
-      // Navigation to '/dashboard' will be handled by the AuthProvider's onAuthStateChanged listener
-      // or the effect in src/app/page.tsx if already on that page.
-      // We can show a pending toast here that gets updated or dismissed by other parts of the app
-      // For now, successful sign-in will trigger user state change and redirect.
       toast({
         title: "Signing in with Google...",
         description: "Please wait while we authenticate you.",
       });
+      // router.replace('/dashboard') will be handled by AuthProvider or page.tsx effect
     } catch (error: any) {
       console.error("Google Sign-In failed", error);
       let errorMessage = "An error occurred during Google Sign-In. Please try again.";
@@ -70,17 +69,20 @@ export function LoginForm() {
         errorMessage = "Google Sign-In was cancelled.";
       } else if (error.code === 'auth/network-request-failed') {
         errorMessage = "Network error during Google Sign-In. Please check your connection.";
+      } else if (error.code === 'auth/unauthorized-domain') {
+        errorMessage = "This domain is not authorized for Google Sign-In. Please check Firebase console.";
       }
       toast({
         title: "Google Sign-In Failed",
         description: errorMessage,
         variant: "destructive",
       });
+    } finally {
       setIsGoogleLoading(false);
     }
-    // No need to setIsGoogleLoading(false) on success here, as page will redirect or user state updates.
-    // It's set to false in the catch block.
   };
+
+  const overallLoading = isEmailLoading || isGoogleLoading || authIsLoading;
 
   return (
     <Card className="w-full max-w-md shadow-2xl">
@@ -98,7 +100,7 @@ export function LoginForm() {
               value={name} 
               onChange={(e) => setName(e.target.value)} 
               required 
-              disabled={isEmailLoading || isGoogleLoading}
+              disabled={overallLoading}
             />
           </div>
           <div className="space-y-2">
@@ -110,10 +112,10 @@ export function LoginForm() {
               value={email} 
               onChange={(e) => setEmail(e.target.value)} 
               required 
-              disabled={isEmailLoading || isGoogleLoading}
+              disabled={overallLoading}
             />
           </div>
-          <Button type="submit" className="w-full" disabled={isEmailLoading || isGoogleLoading}>
+          <Button type="submit" className="w-full" disabled={overallLoading}>
             {isEmailLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in...</> : 'Sign In with Email'}
           </Button>
         </form>
@@ -122,14 +124,21 @@ export function LoginForm() {
           <span className="mx-4 text-xs uppercase text-muted-foreground">Or</span>
           <div className="flex-grow border-t border-muted"></div>
         </div>
-        <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={isGoogleLoading || isEmailLoading}>
+        <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={overallLoading}>
           {isGoogleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ChromeIcon className="mr-2 h-5 w-5" /> }
           {isGoogleLoading ? 'Processing Google Sign-In...' : 'Sign In with Google'}
         </Button>
       </CardContent>
-      <CardFooter className="text-center text-sm text-muted-foreground">
+      <CardFooter className="flex flex-col items-center space-y-2 text-sm text-muted-foreground">
         <p>Email login is simulated. Google Sign-In uses Firebase.</p>
+        <p>
+          Don't have an account?{' '}
+          <Link href="/signup" className="text-primary hover:underline">
+            Sign up
+          </Link>
+        </p>
       </CardFooter>
     </Card>
   );
 }
+
