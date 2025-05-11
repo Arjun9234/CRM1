@@ -1,3 +1,4 @@
+
 "use client";
 
 import AppLayout from "@/components/layout/app-layout";
@@ -25,9 +26,13 @@ async function fetchCampaigns(): Promise<Campaign[]> {
 }
 
 export default function DashboardPage() {
-  const { data: campaigns = [], isLoading, error } = useQuery<Campaign[]>({
+  const { data: campaigns = [], isLoading, error, isFetching } = useQuery<Campaign[]>({
     queryKey: ['campaigns'],
     queryFn: fetchCampaigns,
+    // The dashboard is a high-level overview, so we can afford a slightly longer stale time
+    // to reduce refetches if the user navigates away and back quickly.
+    // staleTime: 1000 * 60 * 1, // 1 minute
+    // refetchInterval: 1000 * 60 * 5, // Refetch every 5 minutes to keep data relatively fresh
   });
 
   const sortedCampaigns = useMemo(() => {
@@ -39,8 +44,10 @@ export default function DashboardPage() {
     const tc = sortedCampaigns.length;
     const tat = sortedCampaigns.reduce((sum, c) => sum + (c.audienceSize || 0), 0);
     const tss = sortedCampaigns.reduce((sum, c) => sum + (c.sentCount || 0), 0);
-    const totalAttempted = sortedCampaigns.reduce((sum, c) => sum + (c.audienceSize || 0), 0);
-    const osr = totalAttempted > 0 ? (tss / totalAttempted) * 100 : 0; 
+    const totalAttemptedForSuccessRate = sortedCampaigns
+      .filter(c => c.status === 'Sent' || c.status === 'Archived' || c.status === 'Failed') // Only count relevant statuses for success rate calculation
+      .reduce((sum, c) => sum + (c.audienceSize || 0), 0);
+    const osr = totalAttemptedForSuccessRate > 0 ? (tss / totalAttemptedForSuccessRate) * 100 : 0; 
     
     return { 
       totalCampaigns: tc, 
@@ -49,6 +56,8 @@ export default function DashboardPage() {
       overallSuccessRate: osr 
     };
   }, [sortedCampaigns]);
+
+  const campaignsForDisplay = useMemo(() => sortedCampaigns.slice(0, 6), [sortedCampaigns]);
 
   if (isLoading) {
     return (
@@ -110,16 +119,15 @@ export default function DashboardPage() {
 
       <div className="grid gap-6 lg:grid-cols-3 mb-8">
         <div className="lg:col-span-2">
-          <CampaignPerformanceChart campaigns={sortedCampaigns.slice(0,7)} /> 
+          <CampaignPerformanceChart campaigns={campaignsForDisplay} /> 
         </div>
         <div>
           <MarketingTipsWidget />
         </div>
       </div>
       
-      <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-foreground mb-6">Your Campaigns</h2>
-      <CampaignList campaigns={sortedCampaigns} /> 
+      <h2 className="text-xl md:text-2xl font-semibold tracking-tight text-foreground mb-6">Your Campaigns ({campaignsForDisplay.length} most recent)</h2>
+      <CampaignList campaigns={campaignsForDisplay} /> 
     </AppLayout>
   );
 }
-
