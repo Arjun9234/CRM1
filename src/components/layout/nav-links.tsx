@@ -1,5 +1,5 @@
 
-import { LayoutDashboard, Users, PlusCircle, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, PlusCircle, Settings, LogOut, BarChart3, ListChecks } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export interface NavLink {
@@ -14,19 +14,29 @@ export const mainNavLinks: NavLink[] = [
     href: "/dashboard",
     label: "Dashboard",
     icon: LayoutDashboard,
-    match: (pathname) => pathname === "/dashboard" || pathname.startsWith("/campaigns") && !pathname.startsWith("/campaigns/new"),
+    match: (pathname) => pathname === "/dashboard" || (pathname.startsWith("/campaigns") && !pathname.startsWith("/campaigns/new")),
   },
   {
     href: "/campaigns/new",
     label: "Create Campaign",
     icon: PlusCircle,
   },
+  {
+    href: "/customers",
+    label: "Customers",
+    icon: Users,
+  },
+  {
+    href: "/analytics",
+    label: "Analytics",
+    icon: BarChart3,
+  },
+  {
+    href: "/tasks",
+    label: "Tasks",
+    icon: ListChecks,
+  },
   // Example for more links:
-  // {
-  //   href: "/segments",
-  //   label: "Segments",
-  //   icon: Users,
-  // },
   // {
   //   href: "/settings",
   //   label: "Settings",
