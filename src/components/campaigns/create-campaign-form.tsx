@@ -39,12 +39,9 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
     let errorPayload: { message: string } = { message: `Failed to create campaign (status: ${response.status})` };
     try {
       const parsedError = await response.json();
-      // API returns { message: "Failed to create campaign", error: "details" } 
-      // OR { message: "Invalid campaign data", errors: ZodFieldErrors }
       if (parsedError.message && parsedError.error) { 
         errorPayload.message = `API Error: ${parsedError.message} - ${parsedError.error}`;
       } else if (parsedError.message && parsedError.errors) { 
-        // Flatten Zod errors for better readability if possible, or stringify
         const errorDetails = Object.entries(parsedError.errors)
             .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
             .join('; ');
@@ -53,7 +50,6 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
         errorPayload.message = parsedError.message;
       }
     } catch (e) {
-      // Non-JSON response
       const errorText = await response.text();
       console.error("Server returned non-JSON error response:", response.status, errorText);
       errorPayload.message = `Server error ${response.status}. Response: ${errorText.substring(0,100)}... See console for full details.`;
@@ -83,6 +79,8 @@ const symbolToShortCodeMap: Record<string, string> = {
   'endsWith': 'endsWith',   
 };
 
+const campaignStatuses: Campaign['status'][] = ['Draft', 'Scheduled', 'Sent', 'Archived', 'Cancelled', 'Failed'];
+
 
 export function CreateCampaignForm() {
   const [campaignName, setCampaignName] = useState("");
@@ -90,9 +88,10 @@ export function CreateCampaignForm() {
   const [rules, setRules] = useState<SegmentRule[]>([]);
   const [ruleLogic, setRuleLogic] = useState<'AND' | 'OR'>('AND');
   const [message, setMessage] = useState("");
+  const [status, setStatus] = useState<Campaign['status']>('Draft'); // Default to Draft
   const [isSuggestingMessage, setIsSuggestingMessage] = useState(false);
   const [messageSuggestions, setMessageSuggestions] = useState<string[]>([]);
-  const [audienceSize, setAudienceSize] = useState(0); // Track estimated audience size
+  const [audienceSize, setAudienceSize] = useState(0); 
 
   const router = useRouter();
   const { toast } = useToast();
@@ -103,35 +102,31 @@ export function CreateCampaignForm() {
     onSuccess: (data: Campaign) => { 
       toast({
         title: "Campaign Created!",
-        description: `${data.name || campaignName} has been successfully scheduled.`,
+        description: `${data.name || campaignName} has been successfully created with status: ${data.status}.`,
       });
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-      // It's good practice to also invalidate the specific campaign query if you have one for its detail page
       queryClient.invalidateQueries({ queryKey: ['campaign', data.id] }); 
       router.push("/dashboard");
     },
     onError: (error: Error) => {
       toast({
         title: "Failed to Create Campaign",
-        description: error.message, // This will now have more details from the createCampaign function
+        description: error.message, 
         variant: "destructive",
-        duration: 7000, // Longer duration for detailed errors
+        duration: 7000, 
       });
     },
   });
 
   const handleNlpRuleGenerated = (ruleText: string) => {
-    // More robust parsing for operators like >=, <=, !=
     const parts = ruleText.match(/(\w+)\s*([<>=!≤≥≠]+|contains|starts_with|endswith|startsWith|endsWith)\s*(.+)/i);
     if (parts && parts.length === 4) {
         const rawOperator = parts[2].trim().toLowerCase();
-        // Normalize common symbols to short codes
         const operatorMapping: Record<string, string> = {
             ...symbolToShortCodeMap,
             '≤': 'lte',
             '≥': 'gte',
             '≠': 'neq',
-            // ensure client-side parsing consistency
             'starts_with': 'startsWith', 
             'ends_with': 'endsWith',
         };
@@ -192,7 +187,7 @@ export function CreateCampaignForm() {
       rules: rules, 
       ruleLogic: ruleLogic,
       message: message,
-      status: "Scheduled", 
+      status: status, 
       audienceSize: audienceSize, 
     };
     
@@ -205,7 +200,7 @@ export function CreateCampaignForm() {
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">Campaign Details</CardTitle>
-          <CardDescription>Set up the name and message for your new campaign.</CardDescription>
+          <CardDescription>Set up the name, message, and status for your new campaign.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -257,6 +252,21 @@ export function CreateCampaignForm() {
               </div>
             )}
           </div>
+          <div>
+            <Label htmlFor="status">Campaign Status</Label>
+            <Select value={status} onValueChange={(value: Campaign['status']) => setStatus(value)} disabled={mutation.isPending}>
+              <SelectTrigger id="status" className="w-full">
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                {campaignStatuses.map(s => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 
@@ -285,9 +295,9 @@ export function CreateCampaignForm() {
         </Button>
         <Button type="submit" disabled={mutation.isPending || rules.length === 0} className="w-full sm:w-auto">
           {mutation.isPending ? (
-            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Scheduling...</>
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
           ) : (
-            <><Send className="mr-2 h-4 w-4" /> Schedule Campaign</>
+            <><Send className="mr-2 h-4 w-4" /> Create Campaign</>
           )}
         </Button>
       </CardFooter>
