@@ -37,33 +37,52 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
 
   if (!response.ok) {
     let errorMessage = `Failed to create campaign (status: ${response.status} ${response.statusText})`;
-    let errorBody = "";
+    let errorBodyText = ""; // To store the raw error body text
+
     try {
-      errorBody = await response.text(); // Read body as text first for errors
-      const errorData = JSON.parse(errorBody); // Try to parse it as JSON
-      errorMessage = errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : errorMessage);
-      if (errorData.errors) { // Handle Zod validation errors from API
-        const errorDetails = Object.entries(errorData.errors)
+      errorBodyText = await response.text(); // Read the body as text first
+
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const errorData = JSON.parse(errorBodyText); 
+        errorMessage = errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : errorMessage);
+        if (errorData.errors) {
+          const errorDetails = Object.entries(errorData.errors)
             .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
             .join('; ');
-        errorMessage = `Invalid data: ${errorMessage}. Details: ${errorDetails}`;
+          errorMessage = `Invalid data: ${errorMessage}. Details: ${errorDetails}`;
+        }
+      } else if (errorBodyText.toLowerCase().includes("<html")) {
+        errorMessage = `Server returned an unexpected HTML error (status: ${response.status}). Please check server logs or network conditions.`;
+      } else if (errorBodyText) {
+        errorMessage = `Server error (status: ${response.status}): ${errorBodyText.substring(0, 200)}`;
       }
     } catch (e) {
-      // JSON.parse failed, use the text body if it's not empty, otherwise stick to status message
-      if (errorBody) {
-        errorMessage = errorBody.substring(0, 500); // Limit length for toast
+      console.warn("Error processing error response body during campaign creation. Status:", response.status, e);
+      if (errorBodyText.toLowerCase().includes("<html")) {
+         errorMessage = `Server returned an unparsable HTML error (status: ${response.status}).`;
+      } else if (errorBodyText) {
+         errorMessage = `Failed to parse error response (status: ${response.status}): ${errorBodyText.substring(0,100)}`;
+      } else {
+         errorMessage = `Failed to create campaign (status: ${response.status} ${response.statusText}). Could not retrieve detailed error.`;
       }
-       console.warn("Could not parse error response as JSON during campaign creation. Raw error body:", errorBody.substring(0, 500));
     }
-    console.error("Error details from createCampaign:", { status: response.status, message: errorMessage, rawBody: errorBody });
+    
+    console.error("Create campaign API error:", { 
+        status: response.status, 
+        statusText: response.statusText, 
+        message: errorMessage, 
+        bodyPreview: errorBodyText.substring(0, 500) 
+    });
     throw new Error(errorMessage);
   }
 
-  // If response is OK (201 Created), parse the successful JSON response
   try {
     return await response.json();
   } catch (e) {
     console.error("Server returned OK (201), but with non-JSON success response during campaign creation:", response.status, e);
+    // If response.json() fails, the body is consumed. We can't re-read it here without cloning.
+    // Log that the success response was not valid JSON.
     throw new Error("Received an invalid success response format from the server after campaign creation.");
   }
 }
@@ -80,7 +99,7 @@ const symbolToShortCodeMap: Record<string, string> = {
   '<=': 'lte',
   'contains': 'contains',
   'startsWith': 'startsWith', 
-  'endsWith': 'endsWith',   
+  'endswith': 'endsWith',   
 };
 
 const campaignStatuses: Campaign['status'][] = ['Draft', 'Scheduled', 'Sent', 'Archived', 'Cancelled', 'Failed'];
@@ -109,7 +128,7 @@ export function CreateCampaignForm() {
         description: `${data.name || campaignName} has been successfully created with status: ${data.status}.`,
       });
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-      queryClient.invalidateQueries({ queryKey: ['campaign', data.id] }); 
+      // queryClient.invalidateQueries({ queryKey: ['campaign', data.id] }); // No need to invalidate single on create
       router.push("/dashboard");
     },
     onError: (error: Error) => {
@@ -176,10 +195,18 @@ export function CreateCampaignForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!campaignName || rules.length === 0 || !message) { 
+    if (!campaignName || !message) { 
       toast({
         title: "Missing Information",
-        description: "Campaign Name, Message, and at least one Segment Rule are required.",
+        description: "Campaign Name and Message are required.",
+        variant: "destructive",
+      });
+      return;
+    }
+     if (rules.length === 0) {
+      toast({
+        title: "No Audience Defined",
+        description: "Please add at least one segment rule or use AI to suggest rules.",
         variant: "destructive",
       });
       return;
@@ -187,7 +214,7 @@ export function CreateCampaignForm() {
 
     const newCampaignPayload: CampaignCreationPayload = {
       name: campaignName,
-      ...(segmentName && { segmentName }), // Only include segmentName if it's not empty
+      ...(segmentName && { segmentName }), 
       rules: rules, 
       ruleLogic: ruleLogic,
       message: message,
@@ -298,7 +325,7 @@ export function CreateCampaignForm() {
         </Button>
         <Button type="submit" disabled={mutation.isPending || rules.length === 0} className="w-full sm:w-auto">
           {mutation.isPending ? (
-            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating...</>
           ) : (
             <><Send className="mr-2 h-4 w-4" /> Create Campaign</>
           )}
@@ -307,3 +334,4 @@ export function CreateCampaignForm() {
     </form>
   );
 }
+

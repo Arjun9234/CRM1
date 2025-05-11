@@ -37,33 +37,49 @@ async function updateCampaign(campaignId: string, payload: CampaignUpdatePayload
 
   if (!response.ok) {
     let errorMessage = `Failed to update campaign (status: ${response.status} ${response.statusText})`;
-    let errorBody = "";
+    let errorBodyText = ""; // To store the raw error body text
+
     try {
-      errorBody = await response.text(); // Read body as text first for errors
-      const errorData = JSON.parse(errorBody); // Try to parse it as JSON
-      errorMessage = errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : errorMessage);
-      if (errorData.errors) { // Handle Zod validation errors from API
-        const errorDetails = Object.entries(errorData.errors)
+      errorBodyText = await response.text(); // Read the body as text first
+
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const errorData = JSON.parse(errorBodyText); 
+        errorMessage = errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : errorMessage);
+        if (errorData.errors) {
+          const errorDetails = Object.entries(errorData.errors)
             .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
             .join('; ');
-        errorMessage = `Invalid data: ${errorMessage}. Details: ${errorDetails}`;
+          errorMessage = `Invalid data: ${errorMessage}. Details: ${errorDetails}`;
+        }
+      } else if (errorBodyText.toLowerCase().includes("<html")) {
+        errorMessage = `Server returned an unexpected HTML error (status: ${response.status}). Please check server logs or network conditions.`;
+      } else if (errorBodyText) {
+        errorMessage = `Server error (status: ${response.status}): ${errorBodyText.substring(0, 200)}`;
       }
     } catch (e) {
-      // JSON.parse failed, use the text body if it's not empty, otherwise stick to status message
-      if (errorBody) {
-        errorMessage = errorBody.substring(0, 500); // Limit length for toast
+      console.warn("Error processing error response body during campaign update. Status:", response.status, e);
+      if (errorBodyText.toLowerCase().includes("<html")) {
+         errorMessage = `Server returned an unparsable HTML error (status: ${response.status}).`;
+      } else if (errorBodyText) {
+         errorMessage = `Failed to parse error response (status: ${response.status}): ${errorBodyText.substring(0,100)}`;
+      } else {
+         errorMessage = `Failed to update campaign (status: ${response.status} ${response.statusText}). Could not retrieve detailed error.`;
       }
-      console.warn("Could not parse error response as JSON during campaign update. Raw error body:", errorBody.substring(0, 500));
     }
-    console.error("Error details from updateCampaign:", { status: response.status, message: errorMessage, rawBody: errorBody });
+    
+    console.error("Update campaign API error:", { 
+        status: response.status, 
+        statusText: response.statusText, 
+        message: errorMessage, 
+        bodyPreview: errorBodyText.substring(0, 500) 
+    });
     throw new Error(errorMessage);
   }
   
-  // If response is OK, parse the successful JSON response
   try {
     return await response.json();
   } catch (e) {
-    // This case means server sent 2xx status but body was not valid JSON
     console.error("Server returned OK, but with non-JSON success response during update:", response.status, e);
     throw new Error("Received an invalid success response format from the server after update.");
   }
@@ -127,7 +143,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
       queryClient.invalidateQueries({ queryKey: ['campaign', existingCampaign.id] });
       queryClient.invalidateQueries({ queryKey: ['campaign', existingCampaign.id, 'edit'] });
       
-      router.push("/dashboard");
+      router.push(`/campaigns/${existingCampaign.id}`); // Go back to detail page or dashboard
     },
     onError: (error: Error) => {
       toast({
@@ -191,10 +207,18 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!campaignName || rules.length === 0 || !message) { // segmentName is optional, can be empty
+    if (!campaignName || !message) { 
       toast({
         title: "Missing Information",
-        description: "Campaign Name, Message, and at least one Segment Rule are required.",
+        description: "Campaign Name and Message are required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (rules.length === 0) {
+      toast({
+        title: "No Audience Defined",
+        description: "Please add at least one segment rule.",
         variant: "destructive",
       });
       return;
@@ -202,7 +226,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
 
     const updatedCampaignPayload: CampaignUpdatePayload = {
       name: campaignName,
-      ...(segmentName && { segmentName }), // Only include if not empty
+      segmentName: segmentName || undefined, // Send undefined if empty to potentially clear it
       rules: rules, 
       ruleLogic: ruleLogic,
       message: message,
