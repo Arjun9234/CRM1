@@ -17,7 +17,7 @@ interface RuleBuilderProps {
 }
 
 const availableFields = [
-  { value: "totalSpend", label: "Total Spend (INR)" },
+  { value: "TotalSpend", label: "Total Spend (INR)" },
   { value: "purchaseFrequency", label: "Purchase Frequency (count)" },
   { value: "lastPurchaseDays", label: "Days Since Last Purchase" },
   { value: "city", label: "City (text)" },
@@ -45,7 +45,7 @@ const operatorsByFieldType: Record<string, { value: string; label: string }[]> =
 };
 
 const fieldTypes: Record<string, 'number' | 'string'> = {
-  totalSpend: "number",
+  TotalSpend: "number",
   purchaseFrequency: "number",
   lastPurchaseDays: "number",
   city: "string",

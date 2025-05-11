@@ -23,7 +23,7 @@ const initialDummyCampaigns: Campaign[] = [
     id: "dummy-campaign-2",
     name: "Summer Sale Teaser",
     segmentName: "High Value Customers",
-    rules: [{ id: "rule1", field: "totalSpend", operator: "gte", value: "5000" }],
+    rules: [{ id: "rule1", field: "TotalSpend", operator: "gte", value: "5000" }],
     ruleLogic: "AND",
     message: "☀️ Get ready! Our Summer Sale is just around the corner with exclusive deals for you.",
     createdAt: subDays(new Date(), 2).toISOString(),
