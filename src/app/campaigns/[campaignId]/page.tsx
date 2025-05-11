@@ -1,3 +1,4 @@
+
 "use client";
 
 import AppLayout from "@/components/layout/app-layout";
@@ -18,7 +19,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Users, CheckCircle, XCircle, Target, CalendarDays, MessageSquare, SlidersHorizontal, AlertTriangle, BarChart, Edit3, Trash2, Loader2 } from "lucide-react";
+import { ArrowLeft, Users, CheckCircle, XCircle, Target, CalendarDays, MessageSquare, SlidersHorizontal, AlertTriangle, BarChart, Edit3, Trash2, Loader2, Ban } from "lucide-react";
 import type { Campaign, SegmentRule } from "@/lib/types";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
@@ -53,6 +54,7 @@ const statusBadgeVariant = (status: Campaign['status']) => {
         case 'Draft': return 'border-gray-500 text-gray-700 dark:text-gray-400';
         case 'Failed': return 'bg-red-500 hover:bg-red-600 text-white';
         case 'Archived': return 'bg-gray-600 hover:bg-gray-700 text-white';
+        case 'Cancelled': return 'bg-orange-500 hover:bg-orange-600 text-white';
         default: return 'secondary';
     }
 };
@@ -65,8 +67,8 @@ const operatorDisplayMap: Record<string, string> = {
   gte: '>=',
   lte: '<=',
   contains: 'contains',
-  startsWith: 'starts with',
-  endsWith: 'ends with',
+  startswith: 'starts with', // consistent casing
+  endswith: 'ends with', // consistent casing
 };
 
 export default function CampaignDetailPage() {
@@ -159,7 +161,10 @@ export default function CampaignDetailPage() {
             </Button>
             <h1 className="text-3xl font-bold tracking-tight text-foreground">{campaign.name}</h1>
             <div className="flex items-center gap-2 mt-1">
-                <Badge className={statusBadgeVariant(campaign.status)}>{campaign.status}</Badge>
+                <Badge className={statusBadgeVariant(campaign.status)}>
+                  {campaign.status === 'Cancelled' && <Ban className="mr-1.5 h-3.5 w-3.5" />}
+                  {campaign.status}
+                </Badge>
                 <p className="text-sm text-muted-foreground">
                     Created: {format(new Date(campaign.createdAt), "PPpp")}
                 </p>
@@ -171,7 +176,7 @@ export default function CampaignDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)}>
+            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)} disabled={campaign.status === 'Sent' || campaign.status === 'Archived' || campaign.status === 'Failed'}>
                 <Edit3 className="mr-2 h-4 w-4"/> Edit
             </Button>
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

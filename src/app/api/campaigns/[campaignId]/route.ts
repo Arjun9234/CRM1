@@ -19,7 +19,7 @@ const campaignUpdateSchema = z.object({
   rules: z.array(segmentRuleSchema).optional(),
   ruleLogic: z.enum(['AND', 'OR']).optional(),
   message: z.string().min(1, "Message is required").optional(),
-  status: z.enum(['Draft', 'Scheduled', 'Sent', 'Failed', 'Archived']).optional(),
+  status: z.enum(['Draft', 'Scheduled', 'Sent', 'Failed', 'Archived', 'Cancelled']).optional(),
   audienceSize: z.number().min(0).optional(),
   sentCount: z.number().min(0).optional(),
   failedCount: z.number().min(0).optional(),
@@ -107,6 +107,15 @@ export async function PUT(
         ...validatedDataToUpdate,
         updatedAt: Timestamp.now(),
       };
+      // If status changes to 'Sent' and sent/failed counts are not provided, simulate them
+      if (validatedDataToUpdate.status === 'Sent' && validatedDataToUpdate.audienceSize !== undefined && validatedDataToUpdate.sentCount === undefined && validatedDataToUpdate.failedCount === undefined) {
+        const audienceSize = validatedDataToUpdate.audienceSize;
+        const successRate = Math.random() * 0.4 + 0.6; // 60-100% success
+        dataForFirebaseUpdate.sentCount = Math.floor(audienceSize * successRate);
+        dataForFirebaseUpdate.failedCount = audienceSize - dataForFirebaseUpdate.sentCount;
+      }
+
+
       const cleanedDataForFirebase = Object.fromEntries(
         Object.entries(dataForFirebaseUpdate).filter(([_, v]) => v !== undefined)
       );
@@ -128,6 +137,13 @@ export async function PUT(
       const cleanedDataForDummyStore = Object.fromEntries(
         Object.entries(validatedDataToUpdate).filter(([_, v]) => v !== undefined)
       ) as CampaignUpdatePayload;
+       // Simulate sent/failed counts for dummy store if status is 'Sent'
+      if (cleanedDataForDummyStore.status === 'Sent' && cleanedDataForDummyStore.audienceSize !== undefined && cleanedDataForDummyStore.sentCount === undefined && cleanedDataForDummyStore.failedCount === undefined) {
+        const audienceSize = cleanedDataForDummyStore.audienceSize;
+        const successRate = Math.random() * 0.4 + 0.6;
+        cleanedDataForDummyStore.sentCount = Math.floor(audienceSize * successRate);
+        cleanedDataForDummyStore.failedCount = audienceSize - cleanedDataForDummyStore.sentCount;
+      }
       const updatedDummyCampaign = updateInMemoryDummyCampaign(campaignId, cleanedDataForDummyStore);
       if (updatedDummyCampaign) {
         console.warn(`Campaign ${campaignId} not in Firebase, updated in-memory dummy data.`);
@@ -148,6 +164,14 @@ export async function PUT(
             const cleanedDataForDummyStoreFallback = Object.fromEntries(
                 Object.entries(validatedDataToUpdate).filter(([_, v]) => v !== undefined)
             ) as CampaignUpdatePayload;
+
+            if (cleanedDataForDummyStoreFallback.status === 'Sent' && cleanedDataForDummyStoreFallback.audienceSize !== undefined && cleanedDataForDummyStoreFallback.sentCount === undefined && cleanedDataForDummyStoreFallback.failedCount === undefined) {
+                const audienceSize = cleanedDataForDummyStoreFallback.audienceSize;
+                const successRate = Math.random() * 0.4 + 0.6;
+                cleanedDataForDummyStoreFallback.sentCount = Math.floor(audienceSize * successRate);
+                cleanedDataForDummyStoreFallback.failedCount = audienceSize - cleanedDataForDummyStoreFallback.sentCount;
+            }
+
             const updatedDummyCampaign = updateInMemoryDummyCampaign(campaignId, cleanedDataForDummyStoreFallback);
             if (updatedDummyCampaign) {
                 console.warn(`Firebase error for campaign ${campaignId}. Updated in-memory dummy data as fallback.`);

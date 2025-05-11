@@ -41,7 +41,7 @@ const initialDummyCampaigns: Campaign[] = [
     ruleLogic: "AND",
     message: "We miss you! Come back and enjoy a 15% discount on your next purchase. Use code COMEBACK15.",
     createdAt: subDays(new Date(), 10).toISOString(),
-    updatedAt: subDays(new Date(), 7).toISOString(), // ensure updatedAt is present
+    updatedAt: subDays(new Date(), 7).toISOString(), 
     status: "Sent",
     audienceSize: 200,
     sentCount: 180,
@@ -58,11 +58,25 @@ const initialDummyCampaigns: Campaign[] = [
     ruleLogic: "AND",
     message: "Your feedback matters! Help us improve by taking this quick survey.",
     createdAt: subDays(new Date(), 20).toISOString(),
-    updatedAt: subDays(new Date(), 15).toISOString(), // ensure updatedAt is present
+    updatedAt: subDays(new Date(), 15).toISOString(), 
     status: "Archived",
     audienceSize: 500,
     sentCount: 480,
     failedCount: 20,
+  },
+  {
+    id: "dummy-campaign-5",
+    name: "Holiday Special Early Bird",
+    segmentName: "Newsletter Subscribers",
+    rules: [{ id: "rule1", field: "tag", operator: "eq", value: "newsletter_subscriber" }], // Assuming a 'tag' field
+    ruleLogic: "AND",
+    message: "🔔 Early bird access to Holiday Specials! Don't miss out on exclusive offers.",
+    createdAt: subDays(new Date(), 30).toISOString(),
+    updatedAt: subDays(new Date(), 25).toISOString(),
+    status: "Cancelled", // Example of a cancelled campaign
+    audienceSize: 300,
+    sentCount: 0,       // If cancelled before sending
+    failedCount: 0,
   }
 ];
 
@@ -83,13 +97,21 @@ export function updateInMemoryDummyCampaign(id: string, payload: CampaignUpdateP
   const index = mutableDummyCampaigns.findIndex(c => c.id === id);
   if (index > -1) {
     // Merge existing campaign with payload
-    const updatedCampaign = { 
+    const updatedCampaignData = { 
         ...mutableDummyCampaigns[index], 
         ...payload, 
         updatedAt: new Date().toISOString() 
     };
-    // Ensure all fields from Campaign type are present, even if partial payload
-    mutableDummyCampaigns[index] = updatedCampaign as Campaign;
+
+    // Simulate sent/failed counts if status changes to 'Sent' and they aren't provided
+    if (payload.status === 'Sent' && payload.audienceSize !== undefined && payload.sentCount === undefined && payload.failedCount === undefined) {
+        const audienceSize = payload.audienceSize;
+        const successRate = Math.random() * 0.4 + 0.6; // 60-100% success
+        updatedCampaignData.sentCount = Math.floor(audienceSize * successRate);
+        updatedCampaignData.failedCount = audienceSize - updatedCampaignData.sentCount;
+    }
+    
+    mutableDummyCampaigns[index] = updatedCampaignData as Campaign;
     return JSON.parse(JSON.stringify(mutableDummyCampaigns[index]));
   }
   return null;

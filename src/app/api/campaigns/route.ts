@@ -20,7 +20,7 @@ const campaignCreationSchema = z.object({
   rules: z.array(segmentRuleSchema),
   ruleLogic: z.enum(['AND', 'OR']),
   message: z.string().min(1, "Message is required"),
-  status: z.enum(['Draft', 'Scheduled', 'Sent', 'Failed', 'Archived']),
+  status: z.enum(['Draft', 'Scheduled', 'Sent', 'Failed', 'Archived', 'Cancelled']),
   audienceSize: z.number().min(0),
 });
 

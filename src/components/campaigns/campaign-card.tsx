@@ -1,9 +1,10 @@
+
 "use client";
 
 import type { Campaign } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, CheckCircle, XCircle, Send, Target, CalendarDays, Eye } from "lucide-react";
+import { Users, CheckCircle, XCircle, Send, Target, CalendarDays, Eye, Ban } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
@@ -17,19 +18,43 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
   const audienceSize = campaign.audienceSize || 0;
   const sentCount = campaign.sentCount || 0;
   const failedCount = campaign.failedCount || 0;
-  // If status is Scheduled or Draft, attempted should be 0 or audienceSize if pre-calculated
-  // For 'Sent' or 'Failed' (terminal states for sending), attempted is usually audienceSize.
-  // This logic depends on how `audienceSize` is populated vs actual send attempts.
-  // Let's assume audienceSize is the target, and sentCount+failedCount reflect actuals for completed campaigns.
-  const attemptedCount = (campaign.status === 'Sent' || campaign.status === 'Failed' || campaign.status === 'Archived') 
+
+  const attemptedCount = (campaign.status === 'Sent' || campaign.status === 'Failed' || campaign.status === 'Archived' || campaign.status === 'Cancelled') 
     ? audienceSize 
     : (campaign.status === 'Scheduled' ? audienceSize : 0);
 
-  // Delivery success rate based on actuals if available, otherwise 0 or based on audience if scheduled.
-  // More precise: success rate should be `sentCount / (sentCount + failedCount)` if those reflect all attempts.
-  // Or `sentCount / audienceSize` if audienceSize is the total attempted.
-  // Given current structure, `sentCount / audienceSize` for 'Sent' campaigns.
   const deliverySuccessRate = audienceSize > 0 ? (sentCount / audienceSize) * 100 : 0;
+
+  let badgeVariant: "default" | "secondary" | "destructive" | "outline" = "default";
+  let badgeClassName = "";
+
+  switch (campaign.status) {
+    case 'Sent':
+      badgeClassName = 'bg-green-500 hover:bg-green-600 text-white';
+      break;
+    case 'Scheduled':
+      badgeVariant = 'outline';
+      badgeClassName = 'border-blue-500 text-blue-700 dark:text-blue-400';
+      break;
+    case 'Draft':
+      badgeVariant = 'secondary';
+      badgeClassName = 'border-gray-500 text-gray-700 dark:text-gray-400';
+      break;
+    case 'Failed':
+      badgeVariant = 'destructive';
+      badgeClassName = 'bg-red-500 hover:bg-red-600 text-white';
+      break;
+    case 'Archived':
+      badgeClassName = 'bg-gray-600 hover:bg-gray-700 text-white';
+      break;
+    case 'Cancelled':
+      badgeVariant = 'destructive'; // or 'default' with specific orange
+      badgeClassName = 'bg-orange-500 hover:bg-orange-600 text-white';
+      break;
+    default:
+      badgeVariant = 'secondary';
+  }
+
 
   return (
     <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col">
@@ -37,20 +62,10 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
         <div className="flex justify-between items-start">
           <CardTitle className="text-xl text-primary">{campaign.name}</CardTitle>
           <Badge 
-            variant={
-              campaign.status === 'Sent' ? 'default' : 
-              campaign.status === 'Draft' ? 'secondary' : 
-              campaign.status === 'Scheduled' ? 'outline' :
-              'destructive'
-            }
-            className={
-              campaign.status === 'Sent' ? 'bg-green-500 hover:bg-green-600 text-white' :
-              campaign.status === 'Scheduled' ? 'border-blue-500 text-blue-700 dark:text-blue-400' :
-              campaign.status === 'Draft' ? 'border-gray-500 text-gray-700 dark:text-gray-400' :
-              campaign.status === 'Failed' ? 'bg-red-500 hover:bg-red-600 text-white' :
-              campaign.status === 'Archived' ? 'bg-gray-600 hover:bg-gray-700 text-white' : ''
-            }
+            variant={badgeVariant}
+            className={badgeClassName}
           >
+            {campaign.status === 'Cancelled' && <Ban className="mr-1.5 h-3.5 w-3.5" />}
             {campaign.status}
           </Badge>
         </div>
@@ -80,7 +95,6 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
             <Target className="h-5 w-5 text-muted-foreground" /> 
             <div>
               <p className="text-xs text-muted-foreground">Attempted</p>
-              {/* Attempted could be audienceSize or sum of sent+failed for past campaigns */}
               <p className="text-lg font-semibold">{attemptedCount.toLocaleString()}</p>
             </div>
           </div>

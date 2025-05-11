@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Campaign, CampaignUpdatePayload, SegmentRule } from "@/lib/types";
@@ -12,7 +13,7 @@ import { RuleBuilder } from "./rule-builder";
 import { NlpSegmentInput } from "./nlp-segment-input";
 import { AudiencePreview } from "./audience-preview";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Wand2, Loader2, RotateCcw, Send } from "lucide-react";
+import { Save, Wand2, Loader2 } from "lucide-react";
 import { generateMessageSuggestions } from "@/ai/flows/ai-driven-message-suggestions";
 import {
   Select,
@@ -58,6 +59,9 @@ const symbolToShortCodeMap: Record<string, string> = {
   'starts_with': 'startsWith',
   'ends_with': 'endsWith',
 };
+
+const campaignStatuses: Campaign['status'][] = ['Draft', 'Scheduled', 'Sent', 'Archived', 'Cancelled', 'Failed'];
+
 
 export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
   const [campaignName, setCampaignName] = useState(existingCampaign.name);
@@ -115,7 +119,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
         const newRule: SegmentRule = {
             id: Date.now().toString(),
             field: parts[1].trim(),
-            operator: shortCodeOperator, // Store the short code
+            operator: shortCodeOperator, 
             value: parts[3].trim().replace(/^['"]|['"]$/g, ''),
         };
         setRules(prevRules => [...prevRules, newRule]);
@@ -232,15 +236,15 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
            <div>
             <Label htmlFor="status">Campaign Status</Label>
             <Select value={status} onValueChange={(value: Campaign['status']) => setStatus(value)} disabled={mutation.isPending}>
-              <SelectTrigger id="status">
+              <SelectTrigger id="status" className="w-full">
                 <SelectValue placeholder="Select status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Draft">Draft</SelectItem>
-                <SelectItem value="Scheduled">Scheduled</SelectItem>
-                <SelectItem value="Sent">Sent</SelectItem>
-                <SelectItem value="Failed">Failed</SelectItem>
-                <SelectItem value="Archived">Archived</SelectItem>
+                {campaignStatuses.map(s => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -264,7 +268,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
         />
       </div>
 
-      <AudiencePreview rules={rules} logic={ruleLogic} isCalculating={false} onAudienceSizeChange={setAudienceSize}/>
+      <AudiencePreview rules={rules} logic={ruleLogic} isCalculating={mutation.isPending} onAudienceSizeChange={setAudienceSize}/>
 
       <CardFooter className="flex flex-col sm:flex-row justify-end gap-3 p-0 pt-6">
         <Button type="button" variant="outline" onClick={() => router.back()} disabled={mutation.isPending}>

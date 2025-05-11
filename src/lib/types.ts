@@ -38,7 +38,7 @@ export interface Campaign {
   message: string;
   createdAt: string; // ISO date string, set on creation
   updatedAt?: string; // ISO date string, set on update
-  status: 'Draft' | 'Scheduled' | 'Sent' | 'Failed' | 'Archived';
+  status: 'Draft' | 'Scheduled' | 'Sent' | 'Failed' | 'Archived' | 'Cancelled';
   audienceSize: number; // Estimated or actual count
   sentCount: number;    // Actual messages successfully sent
   failedCount: number;  // Actual messages that failed to send
