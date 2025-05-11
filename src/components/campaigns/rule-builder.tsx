@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { SegmentRule } from "@/lib/types";
@@ -23,7 +24,8 @@ const availableFields = [
   { value: "city", label: "City (text)" },
   { value: "country", label: "Country (text)" },
   { value: "productViewed", label: "Viewed Product (text, product ID/name)"},
-  { value: "signedUpDays", label: "Days Since Sign-up"}
+  { value: "signedUpDays", label: "Days Since Sign-up"},
+  { value: "tags", label: "Tags (text)"}, // Added tags field
 ];
 
 const operatorsByFieldType: Record<string, { value: string; label: string }[]> = {
@@ -52,6 +54,7 @@ const fieldTypes: Record<string, 'number' | 'string'> = {
   country: "string",
   productViewed: "string",
   signedUpDays: "number",
+  tags: "string", // Added tags field type
 };
 
 
@@ -146,14 +149,14 @@ export function RuleBuilder({ rules, onRulesChange, logic, onLogicChange, disabl
                   disabled={disabled}
                 />
               </div>
-              <Button variant="ghost" size="icon" onClick={() => removeRule(index)} aria-label="Remove rule" className="sm:ml-2 mt-2 sm:mt-0" disabled={disabled}>
+              <Button type="button" variant="ghost" size="icon" onClick={() => removeRule(index)} aria-label="Remove rule" className="sm:ml-2 mt-2 sm:mt-0" disabled={disabled}>
                 <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
             </div>
           );
         })}
         <div className="flex flex-col sm:flex-row justify-between items-center gap-2 pt-2">
-          <Button variant="outline" onClick={addRule} className="w-full sm:w-auto" disabled={disabled}>
+          <Button type="button" variant="outline" onClick={addRule} className="w-full sm:w-auto" disabled={disabled}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add Rule
           </Button>
           {rules.length > 1 && (
@@ -171,6 +174,11 @@ export function RuleBuilder({ rules, onRulesChange, logic, onLogicChange, disabl
             </div>
           )}
         </div>
+         {rules.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-2">
+            No rules defined. Click "Add Rule" or use AI suggestions to start building your segment.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

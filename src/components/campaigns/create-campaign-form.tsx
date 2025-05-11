@@ -36,32 +36,36 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
   });
 
   if (!response.ok) {
-    let errorPayload: { message: string } = { message: `Failed to create campaign (status: ${response.status})` };
+    let errorPayload: { message: string, details?: any } = { message: `Failed to create campaign (status: ${response.status})` };
     try {
       const parsedError = await response.json();
-      if (parsedError.message && parsedError.error) { 
-        errorPayload.message = `API Error: ${parsedError.message} - ${parsedError.error}`;
-      } else if (parsedError.message && parsedError.errors) { 
+      errorPayload.details = parsedError;
+      if (parsedError.message && parsedError.errors) { 
         const errorDetails = Object.entries(parsedError.errors)
             .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
             .join('; ');
-        errorPayload.message = `Invalid data: ${parsedError.message}. Details: ${errorDetails}`;
+        errorPayload.message = `Invalid data: ${parsedError.message || 'Validation failed'}. Details: ${errorDetails}`;
       } else if (parsedError.message) {
         errorPayload.message = parsedError.message;
+      } else if (parsedError.error) {
+         errorPayload.message = typeof parsedError.error === 'string' ? parsedError.error : JSON.stringify(parsedError.error);
       }
     } catch (e) {
       const errorText = await response.text();
       console.error("Server returned non-JSON error response:", response.status, errorText);
-      errorPayload.message = `Server error ${response.status}. Response: ${errorText.substring(0,100)}... See console for full details.`;
+      errorPayload.message = `Server error ${response.status}. Response: ${errorText.substring(0,150)}... See console for full details.`;
+      errorPayload.details = errorText;
     }
+    console.error("Create campaign client error payload:", errorPayload);
     throw new Error(errorPayload.message);
   }
 
   try {
     return await response.json();
-  } catch (e) {
-    console.error("Server returned OK, but with non-JSON success response:", response.status, await response.text());
-    throw new Error("Received an invalid success response from the server.");
+  } catch (e: any) {
+    const responseText = await response.text(); // Get text response if .json() fails
+    console.error("Server returned OK (201), but with non-JSON/malformed success response:", response.status, responseText, e);
+    throw new Error(`Received an invalid success response from the server. Details: ${e.message}. Response text: ${responseText.substring(0,150)}...`);
   }
 }
 
@@ -88,7 +92,7 @@ export function CreateCampaignForm() {
   const [rules, setRules] = useState<SegmentRule[]>([]);
   const [ruleLogic, setRuleLogic] = useState<'AND' | 'OR'>('AND');
   const [message, setMessage] = useState("");
-  const [status, setStatus] = useState<Campaign['status']>('Draft'); // Default to Draft
+  const [status, setStatus] = useState<Campaign['status']>('Draft');
   const [isSuggestingMessage, setIsSuggestingMessage] = useState(false);
   const [messageSuggestions, setMessageSuggestions] = useState<string[]>([]);
   const [audienceSize, setAudienceSize] = useState(0); 
@@ -113,7 +117,7 @@ export function CreateCampaignForm() {
         title: "Failed to Create Campaign",
         description: error.message, 
         variant: "destructive",
-        duration: 7000, 
+        duration: 8000, 
       });
     },
   });
@@ -172,10 +176,10 @@ export function CreateCampaignForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!campaignName || !segmentName || rules.length === 0 || !message) {
+    if (!campaignName || rules.length === 0 || !message) { // segmentName is optional
       toast({
         title: "Missing Information",
-        description: "Please fill all campaign details, define at least one segment rule, and write a message.",
+        description: "Campaign Name, Message, and at least one Segment Rule are required.",
         variant: "destructive",
       });
       return;
@@ -183,7 +187,7 @@ export function CreateCampaignForm() {
 
     const newCampaignPayload: CampaignCreationPayload = {
       name: campaignName,
-      segmentName: segmentName,
+      ...(segmentName && { segmentName }), // Only include segmentName if it's not empty
       rules: rules, 
       ruleLogic: ruleLogic,
       message: message,
@@ -275,13 +279,12 @@ export function CreateCampaignForm() {
       <RuleBuilder rules={rules} onRulesChange={setRules} logic={ruleLogic} onLogicChange={setRuleLogic} disabled={mutation.isPending} />
 
       <div>
-        <Label htmlFor="segmentName">Segment Name</Label>
+        <Label htmlFor="segmentName">Segment Name (Optional)</Label>
         <Input
             id="segmentName"
             value={segmentName}
             onChange={(e) => setSegmentName(e.target.value)}
             placeholder="e.g., High Value Customers, Recent Signups"
-            required
             className="mt-1"
             disabled={mutation.isPending}
         />

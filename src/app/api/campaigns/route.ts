@@ -17,7 +17,7 @@ const segmentRuleSchema = z.object({
 const campaignCreationSchema = z.object({
   name: z.string().min(1, "Campaign name is required"),
   segmentName: z.string().optional(),
-  rules: z.array(segmentRuleSchema),
+  rules: z.array(segmentRuleSchema).min(1, "At least one segment rule is required"),
   ruleLogic: z.enum(['AND', 'OR']),
   message: z.string().min(1, "Message is required"),
   status: z.enum(['Draft', 'Scheduled', 'Sent', 'Failed', 'Archived', 'Cancelled']),
@@ -39,7 +39,15 @@ export async function GET() {
         const data = doc.data();
         return {
           id: doc.id,
-          ...data,
+          name: data.name,
+          segmentName: data.segmentName,
+          rules: data.rules,
+          ruleLogic: data.ruleLogic,
+          message: data.message,
+          status: data.status,
+          audienceSize: data.audienceSize,
+          sentCount: data.sentCount,
+          failedCount: data.failedCount,
           createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
           updatedAt: (data.updatedAt as Timestamp)?.toDate().toISOString(),
         } as Campaign;
@@ -50,32 +58,25 @@ export async function GET() {
     firebaseError = true; 
   }
 
-  // Get the current state of in-memory campaigns (initial dummies + any added to in-memory store)
-  const inMemoryCampaigns = getInMemoryDummyCampaigns();
+  const inMemoryCampaigns = getInMemoryDummyCampaigns(); // Already sorted by createdAt desc by default
 
   const combinedCampaignsMap = new Map<string, Campaign>();
 
-  // Add in-memory campaigns first. These include the initial 7 dummy campaigns
-  // and any campaigns added to the in-memory store during the session (e.g., if Firebase was down).
+  // Add in-memory campaigns first.
   inMemoryCampaigns.forEach(campaign => {
     combinedCampaignsMap.set(campaign.id, campaign);
   });
 
-  // Add Firebase campaigns. If a campaign ID from Firebase matches one already in the map
-  // (e.g., a dummy campaign that was later saved/updated to Firebase),
-  // the Firebase version will overwrite the in-memory one, making Firebase the source of truth.
+  // Add Firebase campaigns, overwriting if IDs match.
   firebaseCampaigns.forEach(campaign => {
     combinedCampaignsMap.set(campaign.id, campaign);
   });
   
-  // Convert the map values back to an array and sort by creation date
   const finalCampaignList = Array.from(combinedCampaignsMap.values())
                                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   if (firebaseError && firebaseCampaigns.length === 0) {
-     console.warn("Firebase error during GET /api/campaigns and no campaigns fetched from Firebase. Merged results will primarily use in-memory data.");
-  } else if (firebaseCampaigns.length === 0 && !firebaseError) {
-    console.warn("Firebase has no campaigns, but is responsive. Merged results will use in-memory data.");
+     console.warn("Firebase error during GET /api/campaigns. Merged results will primarily use in-memory data.");
   }
   
   return NextResponse.json(finalCampaignList);
@@ -87,56 +88,92 @@ export async function POST(request: Request) {
     
     const validationResult = campaignCreationSchema.safeParse(body);
     if (!validationResult.success) {
-      return NextResponse.json({ message: 'Invalid campaign data', errors: validationResult.error.flatten().fieldErrors }, { status: 400 });
+      return NextResponse.json({ 
+        message: 'Invalid campaign data', 
+        errors: validationResult.error.flatten().fieldErrors 
+      }, { status: 400 });
     }
 
-    const newCampaignData: CampaignCreationPayload & { createdAt: Timestamp, updatedAt?: Timestamp, sentCount: number, failedCount: number } = {
-      ...validationResult.data,
-      createdAt: Timestamp.now(),
-      sentCount: 0, 
-      failedCount: 0, 
+    const { name, segmentName, rules, ruleLogic, message, status, audienceSize } = validationResult.data;
+
+    // Explicitly construct the object for Firebase
+    const dataToSave: Omit<CampaignCreationPayload, 'audienceSize' | 'status'> & { 
+        audienceSize: number; 
+        status: Campaign['status']; 
+        createdAt: Timestamp; 
+        sentCount: number; 
+        failedCount: number; 
+        segmentName?: string; // Ensure segmentName is explicitly handled
+    } = {
+        name,
+        rules,
+        ruleLogic,
+        message,
+        status,
+        audienceSize,
+        createdAt: Timestamp.now(),
+        sentCount: 0,
+        failedCount: 0,
     };
+
+    if (segmentName) {
+        dataToSave.segmentName = segmentName;
+    }
     
-    if (newCampaignData.status === 'Sent' && newCampaignData.audienceSize > 0) {
+    if (dataToSave.status === 'Sent' && dataToSave.audienceSize > 0) {
         const successRate = Math.random() * 0.20 + 0.75; // 75-95% success
-        newCampaignData.sentCount = Math.floor(newCampaignData.audienceSize * successRate);
-        newCampaignData.failedCount = newCampaignData.audienceSize - newCampaignData.sentCount;
-    } else if (newCampaignData.status === 'Sent' && newCampaignData.audienceSize === 0) {
-        newCampaignData.sentCount = 0;
-        newCampaignData.failedCount = 0;
+        dataToSave.sentCount = Math.floor(dataToSave.audienceSize * successRate);
+        dataToSave.failedCount = dataToSave.audienceSize - dataToSave.sentCount;
+    } else if (dataToSave.status === 'Sent' && dataToSave.audienceSize === 0) {
+        dataToSave.sentCount = 0;
+        dataToSave.failedCount = 0;
     }
 
+    console.log("Data being sent to Firestore:", JSON.stringify(dataToSave, null, 2));
 
     const campaignsCol = collection(db, 'campaigns');
-    const docRef = await addDoc(campaignsCol, newCampaignData);
+    const docRef = await addDoc(campaignsCol, dataToSave);
     
     const createdCampaignResponse: Campaign = {
         id: docRef.id,
-        name: newCampaignData.name,
-        segmentName: newCampaignData.segmentName,
-        rules: newCampaignData.rules,
-        ruleLogic: newCampaignData.ruleLogic,
-        message: newCampaignData.message,
-        status: newCampaignData.status,
-        audienceSize: newCampaignData.audienceSize,
-        sentCount: newCampaignData.sentCount,
-        failedCount: newCampaignData.failedCount,
-        createdAt: newCampaignData.createdAt.toDate().toISOString(),
+        name: dataToSave.name,
+        segmentName: dataToSave.segmentName,
+        rules: dataToSave.rules,
+        ruleLogic: dataToSave.ruleLogic,
+        message: dataToSave.message,
+        status: dataToSave.status,
+        audienceSize: dataToSave.audienceSize,
+        sentCount: dataToSave.sentCount,
+        failedCount: dataToSave.failedCount,
+        createdAt: dataToSave.createdAt.toDate().toISOString(),
     };
 
-    // Add to in-memory store to keep it in sync for fallbacks or mixed-mode display
-    addInMemoryDummyCampaign(createdCampaignResponse);
+    try {
+      addInMemoryDummyCampaign(createdCampaignResponse);
+    } catch (inMemoryError) {
+      console.error("Error adding campaign to in-memory store after Firebase success:", inMemoryError);
+      // Continue to return success to client as Firebase operation succeeded.
+    }
     
     return NextResponse.json(createdCampaignResponse, { status: 201 });
 
-  } catch (error) {
-    console.error("Error creating campaign:", error);
+  } catch (error: any) {
+    console.error("Error creating campaign in POST /api/campaigns:", error);
     let errorMessage = 'An unexpected error occurred while creating the campaign.';
-    if (error instanceof Error) {
-      errorMessage = error.message;
+    
+    if (error.name === 'FirebaseError') { // Firestore specific error
+        errorMessage = `Firebase error: ${error.message} (Code: ${error.code})`;
+    } else if (error instanceof Error) {
+        errorMessage = error.message;
     } else if (typeof error === 'string') {
-      errorMessage = error;
+        errorMessage = error;
     }
+    
+    // Log the raw error object for more details if it's complex
+    if (typeof error === 'object' && error !== null) {
+        console.error("Full error object:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
+    }
+
     return NextResponse.json({ message: 'Failed to create campaign', error: errorMessage }, { status: 500 });
   }
 }

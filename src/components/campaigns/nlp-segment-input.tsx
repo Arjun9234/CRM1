@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Wand2, Brain } from "lucide-react";
+import { Wand2, Brain, Copy, CheckCircle } from "lucide-react"; // Added icons
 import { naturalLanguageToSegment, type NaturalLanguageToSegmentInput } from '@/ai/flows/natural-language-to-segment';
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,9 +38,6 @@ export function NlpSegmentInput({ onSegmentRuleGenerated }: NlpSegmentInputProps
       const result = await naturalLanguageToSegment(input);
       if (result.segmentRule) {
         setGeneratedRule(result.segmentRule);
-        // Automatically call onSegmentRuleGenerated or let user confirm?
-        // For now, display it and let user manually use it or copy it.
-        // onSegmentRuleGenerated(result.segmentRule); 
         toast({
           title: "Segment Rule Suggested",
           description: "AI has suggested a rule based on your prompt.",
@@ -48,7 +45,7 @@ export function NlpSegmentInput({ onSegmentRuleGenerated }: NlpSegmentInputProps
       } else {
          toast({
           title: "AI Suggestion Failed",
-          description: "Could not generate a rule. Please try rephrasing your prompt.",
+          description: "Could not generate a rule. Please try rephrasing your prompt or check AI service status.",
           variant: "destructive",
         });
       }
@@ -56,7 +53,7 @@ export function NlpSegmentInput({ onSegmentRuleGenerated }: NlpSegmentInputProps
       console.error("Error generating segment rule:", error);
       toast({
         title: "Error",
-        description: "An error occurred while generating the segment rule.",
+        description: (error as Error).message || "An error occurred while generating the segment rule.",
         variant: "destructive",
       });
     } finally {
@@ -85,30 +82,34 @@ export function NlpSegmentInput({ onSegmentRuleGenerated }: NlpSegmentInputProps
             disabled={isLoading}
           />
         </div>
-        <Button onClick={handleSubmit} disabled={isLoading} className="w-full sm:w-auto">
+        <Button type="button" onClick={handleSubmit} disabled={isLoading} className="w-full sm:w-auto">
           <Wand2 className="mr-2 h-4 w-4" />
           {isLoading ? "Generating..." : "Suggest Rules with AI"}
         </Button>
         {generatedRule && (
-          <Alert>
+          <Alert className="mt-4">
             <Wand2 className="h-4 w-4" />
             <AlertTitle>AI Suggested Rule Logic:</AlertTitle>
-            <AlertDescription className="font-mono bg-muted p-2 rounded-md text-sm overflow-x-auto">
+            <AlertDescription className="font-mono bg-muted p-3 rounded-md text-sm overflow-x-auto my-2">
               {generatedRule}
             </AlertDescription>
-            <Button variant="link" size="sm" className="mt-2 p-0 h-auto" onClick={() => {
-              navigator.clipboard.writeText(generatedRule);
-              toast({ title: "Copied!", description: "Rule logic copied to clipboard."});
-            }}>Copy to clipboard</Button>
-             <Button variant="link" size="sm" className="mt-2 p-0 h-auto ml-2" onClick={() => onSegmentRuleGenerated(generatedRule)}>
-              Use this rule (experimental)
-            </Button>
+            <div className="flex gap-2 mt-2">
+                <Button variant="outline" size="sm" onClick={() => {
+                navigator.clipboard.writeText(generatedRule);
+                toast({ title: "Copied!", description: "Rule logic copied to clipboard."});
+                }}>
+                <Copy className="mr-2 h-3 w-3"/> Copy
+                </Button>
+                <Button variant="default" size="sm" onClick={() => onSegmentRuleGenerated(generatedRule)}>
+                <CheckCircle className="mr-2 h-3 w-3"/> Use this Rule
+                </Button>
+            </div>
           </Alert>
         )}
       </CardContent>
        <CardFooter>
         <p className="text-xs text-muted-foreground">
-          Note: AI-generated rules are suggestions and may require manual adjustment in the Rule Builder below for precise targeting.
+          Note: AI-generated rules are suggestions. Review and add them to the Rule Builder below. You may need to adjust them for precise targeting.
         </p>
       </CardFooter>
     </Card>
