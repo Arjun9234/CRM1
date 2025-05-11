@@ -2,53 +2,59 @@
 "use client";
 
 import type { SegmentRule } from "@/lib/types";
-import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, PlusCircle } from "lucide-react";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 interface RuleBuilderProps {
   rules: SegmentRule[];
   onRulesChange: (rules: SegmentRule[]) => void;
   logic: 'AND' | 'OR';
   onLogicChange: (logic: 'AND' | 'OR') => void;
+  disabled?: boolean;
 }
 
 const availableFields = [
-  { value: "spend", label: "Total Spend" },
-  { value: "visits", label: "Number of Visits" },
-  { value: "last_purchase_days", label: "Days Since Last Purchase" },
-  { value: "city", label: "City" },
+  { value: "totalSpend", label: "Total Spend (INR)" },
+  { value: "purchaseFrequency", label: "Purchase Frequency (count)" },
+  { value: "lastPurchaseDays", label: "Days Since Last Purchase" },
+  { value: "city", label: "City (text)" },
+  { value: "country", label: "Country (text)" },
+  { value: "productViewed", label: "Viewed Product (text, product ID/name)"},
+  { value: "signedUpDays", label: "Days Since Sign-up"}
 ];
 
 const operatorsByFieldType: Record<string, { value: string; label: string }[]> = {
   number: [
-    { value: ">", label: "Greater than" },
-    { value: "<", label: "Less than" },
-    { value: "=", label: "Equals" },
-    { value: ">=", label: "Greater than or equal to" },
-    { value: "<=", label: "Less than or equal to" },
+    { value: "eq", label: "Equals (=)" },
+    { value: "gt", label: "Greater than (>)" },
+    { value: "lt", label: "Less than (<)" },
+    { value: "gte", label: "Greater than or equal to (>=)" },
+    { value: "lte", label: "Less than or equal to (<=)" },
   ],
   string: [
-    { value: "equals", label: "Equals" },
+    { value: "eq", label: "Equals" },
     { value: "contains", label: "Contains" },
-    { value: "starts_with", label: "Starts with" },
-    { value: "ends_with", label: "Ends with" },
+    { value: "startsWith", label: "Starts with" },
+    { value: "endsWith", label: "Ends with" },
   ],
 };
 
 const fieldTypes: Record<string, 'number' | 'string'> = {
-  spend: "number",
-  visits: "number",
-  last_purchase_days: "number",
+  totalSpend: "number",
+  purchaseFrequency: "number",
+  lastPurchaseDays: "number",
   city: "string",
+  country: "string",
+  productViewed: "string",
+  signedUpDays: "number",
 };
 
 
-export function RuleBuilder({ rules, onRulesChange, logic, onLogicChange }: RuleBuilderProps) {
+export function RuleBuilder({ rules, onRulesChange, logic, onLogicChange, disabled = false }: RuleBuilderProps) {
   const addRule = () => {
     const newRule: SegmentRule = {
       id: Date.now().toString(),
@@ -63,12 +69,11 @@ export function RuleBuilder({ rules, onRulesChange, logic, onLogicChange }: Rule
     const newRules = [...rules];
     newRules[index] = { ...newRules[index], ...updatedRule };
     
-    // If field changed, reset operator to a valid one for the new field type
     if (updatedRule.field) {
       const newFieldType = fieldTypes[updatedRule.field];
-      const currentOperatorIsValid = operatorsByFieldType[newFieldType].some(op => op.value === newRules[index].operator);
+      const currentOperatorIsValid = operatorsByFieldType[newFieldType]?.some(op => op.value === newRules[index].operator);
       if (!currentOperatorIsValid) {
-        newRules[index].operator = operatorsByFieldType[newFieldType][0].value;
+        newRules[index].operator = operatorsByFieldType[newFieldType]?.[0]?.value || '';
       }
     }
     onRulesChange(newRules);
@@ -81,12 +86,13 @@ export function RuleBuilder({ rules, onRulesChange, logic, onLogicChange }: Rule
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle>Define Audience Rules</CardTitle>
+        <CardTitle>Manual Audience Rule Builder</CardTitle>
+        <CardDescription>Define specific criteria for your customer segment.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {rules.map((rule, index) => {
           const currentFieldType = fieldTypes[rule.field] || 'string';
-          const availableOperators = operatorsByFieldType[currentFieldType];
+          const availableOperators = operatorsByFieldType[currentFieldType] || operatorsByFieldType['string'];
           return (
             <div key={rule.id} className="flex flex-col sm:flex-row gap-2 items-end p-3 border rounded-md bg-muted/20 relative">
               {index > 0 && (
@@ -99,8 +105,9 @@ export function RuleBuilder({ rules, onRulesChange, logic, onLogicChange }: Rule
                 <Select
                   value={rule.field}
                   onValueChange={(value) => updateRule(index, { field: value })}
+                  disabled={disabled}
                 >
-                  <SelectTrigger id={`field-${index}`}>
+                  <SelectTrigger id={`field-${index}`} disabled={disabled}>
                     <SelectValue placeholder="Select field" />
                   </SelectTrigger>
                   <SelectContent>
@@ -115,8 +122,9 @@ export function RuleBuilder({ rules, onRulesChange, logic, onLogicChange }: Rule
                 <Select
                   value={rule.operator}
                   onValueChange={(value) => updateRule(index, { operator: value })}
+                  disabled={disabled}
                 >
-                  <SelectTrigger id={`operator-${index}`}>
+                  <SelectTrigger id={`operator-${index}`} disabled={disabled}>
                     <SelectValue placeholder="Select operator" />
                   </SelectTrigger>
                   <SelectContent>
@@ -134,23 +142,24 @@ export function RuleBuilder({ rules, onRulesChange, logic, onLogicChange }: Rule
                   value={rule.value}
                   onChange={(e) => updateRule(index, { value: e.target.value })}
                   placeholder="Enter value"
+                  disabled={disabled}
                 />
               </div>
-              <Button variant="ghost" size="icon" onClick={() => removeRule(index)} aria-label="Remove rule" className="sm:ml-2 mt-2 sm:mt-0">
+              <Button variant="ghost" size="icon" onClick={() => removeRule(index)} aria-label="Remove rule" className="sm:ml-2 mt-2 sm:mt-0" disabled={disabled}>
                 <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
             </div>
           );
         })}
         <div className="flex flex-col sm:flex-row justify-between items-center gap-2 pt-2">
-          <Button variant="outline" onClick={addRule} className="w-full sm:w-auto">
+          <Button variant="outline" onClick={addRule} className="w-full sm:w-auto" disabled={disabled}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add Rule
           </Button>
           {rules.length > 1 && (
             <div className="flex items-center gap-2">
               <Label>Logic between rules:</Label>
-              <Select value={logic} onValueChange={(value: 'AND' | 'OR') => onLogicChange(value)}>
-                <SelectTrigger className="w-[100px]">
+              <Select value={logic} onValueChange={(value: 'AND' | 'OR') => onLogicChange(value)} disabled={disabled}>
+                <SelectTrigger className="w-[100px]" disabled={disabled}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

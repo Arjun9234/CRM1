@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { Campaign, SegmentRule } from "@/lib/types";
+import type { CampaignCreationPayload, SegmentRule } from "@/lib/types";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { RuleBuilder } from "./rule-builder";
 import { NlpSegmentInput } from "./nlp-segment-input";
 import { AudiencePreview } from "./audience-preview";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Wand2, Send, RotateCcw } from "lucide-react";
+import { Save, Wand2, Send, RotateCcw, Loader2 } from "lucide-react";
 import { generateMessageSuggestions } from "@/ai/flows/ai-driven-message-suggestions";
 import {
   Select,
@@ -23,10 +23,25 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+async function createCampaign(payload: CampaignCreationPayload): Promise<any> {
+  const response = await fetch('/api/campaigns', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
 
-const CAMPAIGNS_STORAGE_KEY = 'miniature-genius-campaigns';
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || 'Failed to create campaign');
+  }
+  return response.json();
+}
+
 
 export function CreateCampaignForm() {
   const [campaignName, setCampaignName] = useState("");
@@ -34,32 +49,46 @@ export function CreateCampaignForm() {
   const [rules, setRules] = useState<SegmentRule[]>([]);
   const [ruleLogic, setRuleLogic] = useState<'AND' | 'OR'>('AND');
   const [message, setMessage] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
   const [isSuggestingMessage, setIsSuggestingMessage] = useState(false);
   const [messageSuggestions, setMessageSuggestions] = useState<string[]>([]);
+  const [audienceSize, setAudienceSize] = useState(0); // Track estimated audience size
 
   const router = useRouter();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: createCampaign,
+    onSuccess: (data) => {
+      toast({
+        title: "Campaign Created!",
+        description: `${data.name || campaignName} has been successfully scheduled.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] }); // Refetch campaigns list
+      router.push("/dashboard");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Create Campaign",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleNlpRuleGenerated = (ruleText: string) => {
-    // This is a simplified way to handle NLP rule.
-    // A proper implementation would parse ruleText into SegmentRule[]
-    // For now, we can just show a toast or set it as a single description.
-    // Or, try to parse it. Let's assume ruleText is a simple condition for one rule:
-    // e.g. "spend > 1000"
     const parts = ruleText.match(/(\w+)\s*([<>=!]+|contains|starts_with|ends_with)\s*(.+)/i);
     if (parts && parts.length === 4) {
         const newRule: SegmentRule = {
             id: Date.now().toString(),
             field: parts[1].trim(),
             operator: parts[2].trim(),
-            value: parts[3].trim().replace(/^['"]|['"]$/g, ''), // Remove quotes if any
+            value: parts[3].trim().replace(/^['"]|['"]$/g, ''),
         };
         setRules(prevRules => [...prevRules, newRule]);
         toast({ title: "Rule Added", description: "AI suggested rule has been added to the builder." });
     } else {
-        toast({ title: "Could not parse rule", description: "The AI suggested rule format was not recognized for automatic addition. Please add manually or refine prompt.", variant: "destructive", duration: 5000 });
+        toast({ title: "Could not parse rule", description: "The AI suggested rule format was not recognized. Please add manually.", variant: "destructive", duration: 5000 });
     }
   };
 
@@ -76,7 +105,7 @@ export function CreateCampaignForm() {
         setMessageSuggestions(result.suggestions);
         toast({ title: "Message Suggestions Generated!" });
       } else {
-        toast({ title: "No Suggestions", description: "AI couldn't generate suggestions for this objective.", variant: "destructive" });
+        toast({ title: "No Suggestions", description: "AI couldn't generate suggestions for this objective.", variant: "default" });
       }
     } catch (error) {
       console.error("Error generating message suggestions:", error);
@@ -98,72 +127,33 @@ export function CreateCampaignForm() {
       return;
     }
 
-    setIsLoading(true);
-    setIsSimulating(true);
+    // Audience size is now estimated by AudiencePreview and passed into the payload
+    // The actual calculation might be more complex and happen server-side in a real app.
+    // For now, we rely on the AudiencePreview's mock calculation being stored in `audienceSize` state.
 
-    // Simulate audience size based on rules (mock)
-    const audienceSize = Math.floor(Math.random() * (rules.length * 500)) + 50;
-    
-    // Simulate campaign delivery
-    let sentCount = 0;
-    let failedCount = 0;
-    // Simulate API calls for each user in segment (mock)
-    for (let i = 0; i < audienceSize; i++) {
-      // Simulate ~90% success, ~10% failure
-      if (Math.random() < 0.9) {
-        sentCount++;
-      } else {
-        failedCount++;
-      }
-    }
-    // In this simulation, sentCount is effectively "attempted" and (sentCount - failedCount) is "successful"
-    // For clarity, let's adjust:
-    const attemptedMessages = audienceSize; // We attempt to send to everyone in the audience
-    const successfulDeliveries = Math.round(attemptedMessages * (0.85 + Math.random() * 0.1)); // 85-95% success
-    const failedDeliveries = attemptedMessages - successfulDeliveries;
-
-
-    const newCampaign: Campaign = {
-      id: Date.now().toString(),
+    const newCampaignPayload: CampaignCreationPayload = {
       name: campaignName,
-      segmentId: Date.now().toString() + "-seg", // Mock segment ID
       segmentName: segmentName,
-      rules: rules, // Storing rules with campaign for simplicity
+      rules: rules, 
+      ruleLogic: ruleLogic,
       message: message,
-      createdAt: new Date().toISOString(),
-      status: "Sent", // Assume it's sent upon creation for this simulation
-      audienceSize: audienceSize,
-      sentCount: successfulDeliveries, // Actually delivered
-      failedCount: failedDeliveries,
+      status: "Scheduled", // Default status for new campaigns
+      audienceSize: audienceSize, // Use the estimated audience size
     };
     
-    // Simulate saving to backend/localStorage
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network delay
-
-    try {
-      const existingCampaignsRaw = localStorage.getItem(CAMPAIGNS_STORAGE_KEY);
-      const existingCampaigns: Campaign[] = existingCampaignsRaw ? JSON.parse(existingCampaignsRaw) : [];
-      localStorage.setItem(CAMPAIGNS_STORAGE_KEY, JSON.stringify([...existingCampaigns, newCampaign]));
-      
-      toast({
-        title: "Campaign Created & Sent! (Simulated)",
-        description: `${newCampaign.name} has been processed. Audience: ${audienceSize}, Sent: ${successfulDeliveries}, Failed: ${failedDeliveries}.`,
-        duration: 7000,
-      });
-      router.push("/dashboard");
-
-    } catch (error) {
-        console.error("Failed to save campaign to localStorage", error);
-        toast({
-            title: "Storage Error",
-            description: "Could not save the campaign locally.",
-            variant: "destructive",
-        });
-    } finally {
-        setIsLoading(false);
-        setIsSimulating(false);
-    }
+    mutation.mutate(newCampaignPayload);
   };
+  
+  // Update audienceSize state when AudiencePreview calculates it
+  // This is a bit of a workaround; ideally AudiencePreview would call a prop function.
+  // For now, assuming AudiencePreview's internal state is the source of truth for display,
+  // and we pass it on submit. Let's make AudiencePreview take an onSizeChange prop.
+  // (AudiencePreview itself doesn't expose its calculated size, so this needs adjustment in AudiencePreview if we want CreateCampaignForm to have the size before submit)
+  // For now, let's just mock audienceSize in submit. A better solution would be to lift state up from AudiencePreview.
+  // Let's just fix a value for audienceSize for now, to be improved.
+  // The `AudiencePreview` component's audience size is self-contained. For the form to use it,
+  // `AudiencePreview` would need to call back `CreateCampaignForm` with the new size.
+  // For simplicity, I'll update AudiencePreview to accept an `onAudienceSizeChange` callback.
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
@@ -181,13 +171,15 @@ export function CreateCampaignForm() {
               onChange={(e) => setCampaignName(e.target.value)}
               placeholder="e.g., Summer Sale Promotion, Win-back Inactive Users"
               required
+              disabled={mutation.isPending}
             />
           </div>
           <div>
             <div className="flex justify-between items-center mb-1">
               <Label htmlFor="message">Message</Label>
-              <Button type="button" variant="outline" size="sm" onClick={handleGenerateMessageSuggestions} disabled={isSuggestingMessage}>
-                <Wand2 className="mr-2 h-4 w-4"/> {isSuggestingMessage ? "Suggesting..." : "Suggest with AI"}
+              <Button type="button" variant="outline" size="sm" onClick={handleGenerateMessageSuggestions} disabled={isSuggestingMessage || mutation.isPending}>
+                {isSuggestingMessage ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Wand2 className="mr-2 h-4 w-4"/>}
+                {isSuggestingMessage ? "Suggesting..." : "Suggest with AI"}
               </Button>
             </div>
             <Textarea
@@ -197,11 +189,12 @@ export function CreateCampaignForm() {
               placeholder="e.g., Hi {customer_name}, here’s 10% off on your next order!"
               rows={4}
               required
+              disabled={mutation.isPending}
             />
              {messageSuggestions.length > 0 && (
               <div className="mt-2 space-y-2">
                 <Label className="text-sm text-muted-foreground">AI Suggestions:</Label>
-                 <Select onValueChange={(value) => setMessage(value)}>
+                 <Select onValueChange={(value) => setMessage(value)} disabled={mutation.isPending}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select a suggestion" />
                   </SelectTrigger>
@@ -224,7 +217,7 @@ export function CreateCampaignForm() {
 
       <NlpSegmentInput onSegmentRuleGenerated={handleNlpRuleGenerated} />
       
-      <RuleBuilder rules={rules} onRulesChange={setRules} logic={ruleLogic} onLogicChange={setRuleLogic} />
+      <RuleBuilder rules={rules} onRulesChange={setRules} logic={ruleLogic} onLogicChange={setRuleLogic} disabled={mutation.isPending} />
 
       <div>
         <Label htmlFor="segmentName">Segment Name</Label>
@@ -235,20 +228,21 @@ export function CreateCampaignForm() {
             placeholder="e.g., High Value Customers, Recent Signups"
             required
             className="mt-1"
+            disabled={mutation.isPending}
         />
       </div>
 
-      <AudiencePreview rules={rules} logic={ruleLogic} isCalculating={isLoading} />
+      <AudiencePreview rules={rules} logic={ruleLogic} isCalculating={false} onAudienceSizeChange={setAudienceSize}/>
 
       <CardFooter className="flex flex-col sm:flex-row justify-end gap-3 p-0 pt-6">
-        <Button type="button" variant="outline" onClick={() => router.push("/dashboard")} disabled={isLoading}>
+        <Button type="button" variant="outline" onClick={() => router.push("/dashboard")} disabled={mutation.isPending}>
           Cancel
         </Button>
-        <Button type="submit" disabled={isLoading || rules.length === 0} className="w-full sm:w-auto">
-          {isLoading ? (
-            isSimulating ? <><RotateCcw className="mr-2 h-4 w-4 animate-spin" /> Simulating Delivery...</> : <><Save className="mr-2 h-4 w-4" /> Saving...</>
+        <Button type="submit" disabled={mutation.isPending || rules.length === 0} className="w-full sm:w-auto">
+          {mutation.isPending ? (
+            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Scheduling...</>
           ) : (
-            <><Send className="mr-2 h-4 w-4" /> Save & Launch Campaign</>
+            <><Send className="mr-2 h-4 w-4" /> Schedule Campaign</>
           )}
         </Button>
       </CardFooter>

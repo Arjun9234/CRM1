@@ -8,28 +8,37 @@ import { useEffect, useState } from "react";
 import type { SegmentRule } from "@/lib/types";
 
 interface AudiencePreviewProps {
-  rules: SegmentRule[]; // Audience size could depend on these rules
+  rules: SegmentRule[];
   logic: 'AND' | 'OR';
-  isCalculating: boolean;
+  isCalculating: boolean; // This prop might be for external loading state control
+  onAudienceSizeChange: (size: number) => void; // Callback to parent
 }
 
-export function AudiencePreview({ rules, logic, isCalculating }: AudiencePreviewProps) {
-  const [audienceSize, setAudienceSize] = useState<number | null>(null);
+export function AudiencePreview({ rules, logic, isCalculating, onAudienceSizeChange }: AudiencePreviewProps) {
+  const [displayAudienceSize, setDisplayAudienceSize] = useState<number | null>(null);
+  const [internalIsCalculating, setInternalIsCalculating] = useState(false);
 
   useEffect(() => {
+    setInternalIsCalculating(true);
+    setDisplayAudienceSize(null); // Reset while calculating
+
     // Simulate audience calculation based on rules
-    // This is a mock calculation
-    if (rules.length > 0) {
-        const mockSize = Math.floor(Math.random() * 5000) + 100; // Random size between 100 and 5100
-        // Add a small delay to simulate calculation
-        const timeoutId = setTimeout(() => {
-             setAudienceSize(mockSize);
-        }, 750);
-        return () => clearTimeout(timeoutId);
-    } else {
-        setAudienceSize(0); // No rules, no audience
-    }
-  }, [rules, logic]); // Recalculate if rules or logic change
+    // This is a mock calculation; in a real app, this might be an API call.
+    const timeoutId = setTimeout(() => {
+      let mockSize = 0;
+      if (rules.length > 0) {
+        // Very basic mock: more rules or specific rule content could influence size
+        mockSize = 50 + Math.floor(Math.random() * (rules.length * 150 + (logic === 'OR' ? 500 : 100)));
+      }
+      setDisplayAudienceSize(mockSize);
+      onAudienceSizeChange(mockSize); // Notify parent
+      setInternalIsCalculating(false);
+    }, 750); // Simulate calculation delay
+
+    return () => clearTimeout(timeoutId);
+  }, [rules, logic, onAudienceSizeChange]);
+
+  const showSkeleton = isCalculating || internalIsCalculating || displayAudienceSize === null;
 
   return (
     <Card className="shadow-md">
@@ -40,14 +49,14 @@ export function AudiencePreview({ rules, logic, isCalculating }: AudiencePreview
         </CardTitle>
       </CardHeader>
       <CardContent className="text-center">
-        {isCalculating || audienceSize === null ? (
+        {showSkeleton ? (
           <div className="space-y-2">
             <Skeleton className="h-8 w-24 mx-auto" />
             <Skeleton className="h-4 w-32 mx-auto" />
           </div>
         ) : (
           <>
-            <p className="text-4xl font-bold text-primary">{audienceSize.toLocaleString()}</p>
+            <p className="text-4xl font-bold text-primary">{displayAudienceSize.toLocaleString()}</p>
             <p className="text-sm text-muted-foreground">Estimated users in segment</p>
           </>
         )}
