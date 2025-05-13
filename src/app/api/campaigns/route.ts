@@ -123,7 +123,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ message: 'Invalid JSON payload provided.', error: jsonError.message }, { status: 400 });
     }
     
-    // Log the raw body for debugging, before validation
     console.log("POST /api/campaigns: Parsed request body:", JSON.stringify(body, null, 2).substring(0, 1000) + (JSON.stringify(body, null, 2).length > 1000 ? "..." : ""));
     
     const validationResult = campaignCreationSchema.safeParse(body);
@@ -146,14 +145,13 @@ export async function POST(request: Request) {
         status,
         audienceSize,
         createdAt: Timestamp.now(),
-        sentCount: 0, // Initialize sentCount
-        failedCount: 0, // Initialize failedCount
-        ...(segmentName && { segmentName }), // Conditionally add segmentName
+        sentCount: 0, 
+        failedCount: 0, 
+        ...(segmentName && { segmentName }), 
     };
     
-    // Simulate sending if status is 'Sent'
     if (dataToSave.status === 'Sent' && dataToSave.audienceSize > 0) {
-        const successRate = Math.random() * 0.20 + 0.75; // 75-95% success
+        const successRate = Math.random() * 0.20 + 0.75; 
         dataToSave.sentCount = Math.floor(dataToSave.audienceSize * successRate);
         dataToSave.failedCount = dataToSave.audienceSize - dataToSave.sentCount;
     } else if (dataToSave.status === 'Sent' && dataToSave.audienceSize === 0) {
@@ -164,7 +162,19 @@ export async function POST(request: Request) {
     console.log("POST /api/campaigns: Data being sent to Firestore:", JSON.stringify(dataToSave, null, 2).substring(0, 500) + (JSON.stringify(dataToSave, null, 2).length > 500 ? "..." : ""));
 
     const campaignsCol = collection(db, 'campaigns');
-    const docRef = await addDoc(campaignsCol, dataToSave);
+    let docRef;
+    try {
+        docRef = await addDoc(campaignsCol, dataToSave);
+    } catch (firestoreError: any) {
+        console.error("--- Firestore addDoc Error in POST /api/campaigns ---");
+        console.error("Timestamp:", new Date().toISOString());
+        console.error("Error Message:", firestoreError.message);
+        console.error("Error Code:", firestoreError.code);
+        console.error("Data attempted to save:", JSON.stringify(dataToSave, null, 2).substring(0, 500) + "...");
+        console.error("Stack:", firestoreError.stack);
+        console.error("--- End of Firestore addDoc Error ---");
+        throw firestoreError; // Re-throw to be handled by the main catch block
+    }
     console.log("POST /api/campaigns: Document added to Firestore with ID:", docRef.id);
     
     const createdCampaignResponse: Campaign = {
@@ -182,11 +192,10 @@ export async function POST(request: Request) {
     };
 
     try {
-      addInMemoryDummyCampaign(createdCampaignResponse); // Also add to dummy store for consistency
+      addInMemoryDummyCampaign(createdCampaignResponse); 
       console.log("POST /api/campaigns: Campaign added to in-memory store.");
     } catch (inMemoryError) {
       console.error("Error adding campaign to in-memory store after Firebase success (POST /api/campaigns):", inMemoryError);
-      // Not re-throwing, as Firebase succeeded. This is a secondary concern.
     }
     
     console.log("POST /api/campaigns: Successfully created campaign, returning 201 response.");
@@ -199,21 +208,21 @@ export async function POST(request: Request) {
     let errorMessage = 'An unexpected error occurred while creating the campaign.';
     let errorDetails: Record<string, any> = { rawError: String(error) };
 
-    if (error.name === 'FirebaseError' || (error.code && typeof error.code === 'string' && error.code.startsWith('firebase'))) {
+    if (error.name === 'FirebaseError' || (error.code && typeof error.code === 'string' && (error.code.startsWith('firebase') || error.code.startsWith('firestore')) )) {
         errorMessage = `Firebase error: ${error.message} (Code: ${error.code || 'N/A'})`;
-        errorDetails = { code: error.code, firebaseMessage: error.message };
+        errorDetails = { type: 'FirebaseError', code: error.code, firebaseMessage: error.message };
     } else if (error instanceof z.ZodError) {
         errorMessage = 'Invalid data format for campaign creation.';
         errorDetails = error.flatten().fieldErrors;
     } else if (error instanceof SyntaxError && error.message.includes("JSON")) {
         errorMessage = 'Invalid JSON payload provided (caught by main try-catch).';
-        errorDetails = { syntaxErrorMessage: error.message };
+        errorDetails = { type: 'SyntaxError', syntaxErrorMessage: error.message };
     } else if (error instanceof Error) {
         errorMessage = error.message;
-        errorDetails = { genericErrorMessage: error.message, stack: error.stack?.substring(0, 300) };
+        errorDetails = { type: 'GenericError', genericErrorMessage: error.message, stack: error.stack?.substring(0, 300) };
     } else if (typeof error === 'string') {
         errorMessage = error;
-        errorDetails = { rawErrorString: error };
+        errorDetails = { type: 'StringError', rawErrorString: error };
     }
     
     console.error("Error Message:", errorMessage);
@@ -237,4 +246,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: 'Failed to create campaign', error: safeErrorMessageForResponse, details: errorDetails }, { status: 500 });
   }
 }
-
