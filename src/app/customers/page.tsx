@@ -1,4 +1,3 @@
-
 "use client";
 import AppLayout from "@/components/layout/app-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -27,7 +26,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertTitle, AlertDescription as UiAlertDescription } from "@/components/ui/alert";
 
 async function fetchCustomers(): Promise<Customer[]> {
   const response = await fetch('/api/customers');
@@ -46,6 +45,12 @@ async function createCustomer(payload: CustomerCreationPayload): Promise<Custome
     });
     if (!response.ok) {
         const errorData = await response.json();
+        // Log the detailed errors if available
+        if (errorData.errors) {
+          console.error("Detailed validation errors:", errorData.errors);
+          const messages = Object.entries(errorData.errors).map(([field, errs]) => `${field}: ${(errs as string[]).join(', ')}`).join('; ');
+          throw new Error(`${errorData.message || 'Failed to create customer'}. Details: ${messages}`);
+        }
         throw new Error(errorData.message || 'Failed to create customer');
     }
     const result = await response.json();
@@ -100,7 +105,7 @@ export default function CustomersPage() {
       reset();
     },
     onError: (error: Error) => {
-      toast({ title: "Error Adding Customer", description: error.message, variant: "destructive" });
+      toast({ title: "Error Adding Customer", description: error.message, variant: "destructive", duration: 7000 });
     },
   });
 
@@ -109,8 +114,8 @@ export default function CustomersPage() {
       ...data,
       avatarUrl: `https://picsum.photos/seed/${encodeURIComponent(data.email)}/40/40`, 
       totalSpend: 0,
-      lastContact: formatISO(new Date()), 
-      lastSeenOnline: formatISO(new Date()), // Ensure lastSeenOnline is included
+      lastContact: new Date().toISOString(), // Use toISOString for guaranteed precision
+      lastSeenOnline: new Date().toISOString(), // Use toISOString for guaranteed precision
       tags: data.status ? [data.status] : [], 
       acquisitionSource: data.acquisitionSource || undefined,
     };
@@ -151,7 +156,7 @@ export default function CustomersPage() {
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{(error as Error).message || "Failed to load customer data."}</AlertDescription>
+          <UiAlertDescription>{(error as Error).message || "Failed to load customer data."}</UiAlertDescription>
         </Alert>
       </AppLayout>
      )
