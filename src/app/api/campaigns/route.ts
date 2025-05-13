@@ -32,9 +32,15 @@ export async function GET() {
       const errorBody = await response.text();
       console.error("Error fetching campaigns from backend:", response.status, errorBody);
       try {
+        // Check if errorBody is HTML
+        if (errorBody.trim().startsWith("<html")) {
+          throw new Error(`Backend returned an HTML error page (status: ${response.status}). Check backend server logs.`);
+        }
         const errorJson = JSON.parse(errorBody);
         throw new Error(errorJson.message || `Backend error: ${response.status}`);
-      } catch {
+      } catch(e: any) {
+        // If JSON.parse fails or it was an HTML error initially caught
+        if (e.message.includes("HTML error page")) throw e; // rethrow specific HTML error
         throw new Error(`Failed to fetch campaigns from backend. Status: ${response.status}. Response: ${errorBody.substring(0,100)}`);
       }
     }
@@ -92,4 +98,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: 'Failed to create campaign', error: error.message || 'Unknown server error' }, { status: 500 });
   }
 }
-
