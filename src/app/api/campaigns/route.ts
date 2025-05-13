@@ -2,6 +2,8 @@
 import { NextResponse } from 'next/server';
 import type { Campaign, CampaignCreationPayload } from '@/lib/types';
 import { z } from 'zod';
+// Corrected import path for dummy-data-store
+import { getInMemoryDummyCampaigns, addInMemoryDummyCampaign } from '@/lib/dummy-data-store';
 
 // Zod schema for validation
 const segmentRuleSchema = z.object({
@@ -27,7 +29,7 @@ const API_BASE_URL = `http://localhost:${process.env.SERVER_PORT || 5000}/api`;
 export async function GET() {
   try {
     const response = await fetch(`${API_BASE_URL}/campaigns`, {
-      cache: 'no-store', // Ensure fresh data
+      cache: 'no-store', 
     });
     const responseText = await response.text();
 
@@ -42,7 +44,6 @@ export async function GET() {
           errorMessage = errorJson.message || errorMessage;
         }
       } catch(e: any) {
-        // If JSON.parse fails or it was an HTML error initially caught
         errorMessage = `Failed to fetch campaigns from backend. Status: ${response.status}. Response: ${responseText ? responseText.substring(0,100) : "Empty response"}`;
       }
       throw new Error(errorMessage);
@@ -53,7 +54,11 @@ export async function GET() {
     console.error("--- CRITICAL UNHANDLED ERROR IN GET /api/campaigns (Next.js API route) ---");
     console.error("Error Message:", error.message);
     console.error("Error Stack:", error.stack);
-    return NextResponse.json(
+    // Fallback to dummy data if backend fails and dummy store exists
+    // console.warn("Falling back to in-memory dummy campaigns due to backend error.");
+    // const dummyCampaigns = getInMemoryDummyCampaigns();
+    // return NextResponse.json(dummyCampaigns);
+     return NextResponse.json(
       { message: 'Failed to fetch campaigns', error: error.message || 'Unknown server error' },
       { status: 500 }
     );
@@ -78,13 +83,15 @@ export async function POST(request: Request) {
         errors: validationResult.error.flatten().fieldErrors 
       }, { status: 400 });
     }
+    
+    const validatedPayload = validationResult.data as CampaignCreationPayload;
 
     const backendResponse = await fetch(`${API_BASE_URL}/campaigns`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(validationResult.data),
+      body: JSON.stringify(validatedPayload),
     });
 
     const responseText = await backendResponse.text();
@@ -95,15 +102,12 @@ export async function POST(request: Request) {
     } catch (e) {
         if (!backendResponse.ok) {
             console.error("Error creating campaign via backend (Next.js API route POST /api/campaigns), non-JSON error response:", backendResponse.status, responseText.substring(0, 500));
-            // Check if the error is HTML
             if (responseText && responseText.trim().toLowerCase().startsWith("<html")) {
                  throw new Error(`Backend returned an HTML error page (status: ${backendResponse.status}). Check backend server logs for details. Preview: ${responseText.substring(0,200)}`);
             }
             throw new Error(responseText.substring(0, 200) || `Backend error: ${backendResponse.status}`);
         }
-        // If response is OK but not JSON, it might indicate a misconfiguration or an unexpected success response format from the backend.
         console.warn("Backend response was OK but not valid JSON (POST /api/campaigns):", responseText.substring(0,500));
-        // The backend for campaigns is expected to return JSON.
         throw new Error("Backend response was OK but not valid JSON. Expected JSON campaign data.");
     }
 
@@ -118,7 +122,18 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("--- CRITICAL ERROR IN POST /api/campaigns (Next.js API route) ---");
     console.error("Error Message:", error.message);
-    console.error("Error Stack:", error.stack); // Log the stack for more details
-    return NextResponse.json({ message: 'Failed to create campaign', error: error.message || 'Unknown server error' }, { status: 500 });
+    console.error("Error Stack:", error.stack); 
+    // Fallback to dummy data store for adding campaign if backend fails
+    // console.warn("Falling back to in-memory dummy store for adding campaign due to backend error.");
+    // try {
+    //   const tempBodyForDummy = await request.json(); // Re-parse or use already parsed 'body'
+    //   const dummyCampaignData = campaignCreationSchema.parse(tempBodyForDummy) as CampaignCreationPayload;
+    //   const createdDummyCampaign = addInMemoryDummyCampaign(dummyCampaignData);
+    //   return NextResponse.json(createdDummyCampaign, { status: 201 });
+    // } catch (dummyError: any) {
+    //   console.error("Error adding to dummy store after backend failure:", dummyError.message);
+    //   return NextResponse.json({ message: 'Failed to create campaign (backend and fallback failed)', error: error.message, fallbackError: dummyError.message }, { status: 500 });
+    // }
+     return NextResponse.json({ message: 'Failed to create campaign', error: error.message || 'Unknown server error' }, { status: 500 });
   }
 }

@@ -1,7 +1,10 @@
 
 import { NextResponse } from 'next/server';
-import type { CampaignUpdatePayload } from '@/lib/types';
+import type { CampaignUpdatePayload, Campaign } from '@/lib/types';
 import { z } from 'zod';
+// Corrected import path for dummy-data-store
+import { getCampaignById, updateInMemoryDummyCampaign, deleteInMemoryDummyCampaign } from '@/lib/dummy-data-store';
+
 
 const segmentRuleSchema = z.object({
   id: z.string(),
@@ -45,6 +48,14 @@ export async function GET(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error(`Error in GET /api/campaigns/${campaignId} (Next.js API route):`, errorMessage);
+    
+    // Fallback to dummy data
+    // console.warn(`Backend failed for GET /api/campaigns/${campaignId}. Falling back to dummy data.`);
+    // const dummyCampaign = getCampaignById(campaignId);
+    // if (dummyCampaign) {
+    //   return NextResponse.json(dummyCampaign);
+    // }
+    
     return NextResponse.json({ message: 'Failed to fetch campaign', error: errorMessage }, { status: 500 });
   }
 }
@@ -92,6 +103,14 @@ export async function PUT(
   } catch (error) { 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error during update';
     console.error(`Error in PUT /api/campaigns/${campaignId} (Next.js API route):`, errorMessage);
+
+    // Fallback to dummy data
+    // console.warn(`Backend failed for PUT /api/campaigns/${campaignId}. Falling back to dummy data.`);
+    // const updatedDummyCampaign = updateInMemoryDummyCampaign(campaignId, validatedDataToUpdate);
+    // if (updatedDummyCampaign) {
+    //   return NextResponse.json(updatedDummyCampaign);
+    // }
+
     return NextResponse.json({ message: 'Failed to update campaign', error: errorMessage }, { status: 500 });
   }
 }
@@ -111,23 +130,36 @@ export async function DELETE(
     });
 
     if (!backendResponse.ok) {
-      // Try to parse error response if not a 204 (No Content)
       let errorData;
-      if (backendResponse.status !== 204) {
-         errorData = await backendResponse.json();
+      try {
+        if (backendResponse.status !== 204) { // 204 No Content might not have a body
+           errorData = await backendResponse.json();
+        }
+      } catch (e) {
+        // If parsing JSON fails, use the status text
+        errorData = { message: `Backend error: ${backendResponse.statusText || backendResponse.status}` };
       }
       console.error(`Error deleting campaign ${campaignId} via backend:`, backendResponse.status, errorData);
       throw new Error(errorData?.message || `Backend error: ${backendResponse.status}`);
     }
-    // For DELETE, a 200 or 204 is typical for success. Node server sends JSON message.
-    if (backendResponse.status === 204) {
+    
+    if (backendResponse.status === 204) { // Handle 204 No Content
         return NextResponse.json({ message: 'Campaign deleted successfully' });
     }
-    const responseData = await backendResponse.json();
+    const responseData = await backendResponse.json(); // For 200 OK with body
     return NextResponse.json(responseData);
+
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error(`Error in DELETE /api/campaigns/${campaignId} (Next.js API route):`, errorMessage);
+    
+    // Fallback to dummy data
+    // console.warn(`Backend failed for DELETE /api/campaigns/${campaignId}. Falling back to dummy data.`);
+    // const success = deleteInMemoryDummyCampaign(campaignId);
+    // if (success) {
+    //   return NextResponse.json({ message: 'Campaign deleted successfully (from dummy store)' });
+    // }
+
     return NextResponse.json({ message: 'Failed to delete campaign', error: errorMessage }, { status: 500 });
   }
 }
