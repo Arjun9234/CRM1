@@ -13,18 +13,17 @@ import { ChromeIcon, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
 export function LoginForm() {
-  const { login, isLoading: authIsLoading } = useAuth(); 
+  const { login, signInWithGoogle, isLoading: authIsLoading } = useAuth(); 
   const router = useRouter();
   const [email, setEmail] = useState('');
-  // const [name, setName] = useState(''); // Name not needed for JWT login, typically just email/password
   const [password, setPassword] = useState('');
   const [isEmailLoading, setIsEmailLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false); // Keep for UI, actual logic TBD
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const { toast } = useToast();
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) { // Changed from name to password
+    if (!email || !password) {
       toast({
         title: "Missing fields",
         description: "Please enter both email and password.",
@@ -34,10 +33,10 @@ export function LoginForm() {
     }
     setIsEmailLoading(true);
     try {
-      await login(email, password); // Use email and password for login
+      await login(email, password);
       toast({
         title: "Login Successful",
-        description: `Welcome back!`, // Name will come from user object in context if needed
+        description: `Welcome back!`,
       });
       router.replace('/dashboard');
     } catch (error: any) {
@@ -54,28 +53,23 @@ export function LoginForm() {
 
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
-    toast({
-      title: "Google Sign-In",
-      description: "Google Sign-In with the new backend is not yet fully implemented.",
-      variant: "default",
-    });
-    // try {
-    //   await signInWithGoogle(); // This function needs to be implemented in AuthProvider for Node.js backend
-    //   toast({
-    //     title: "Signing in with Google...",
-    //     description: "Please wait while we authenticate you.",
-    //   });
-    // } catch (error: any) {
-    //   console.error("Google Sign-In failed", error);
-    //   toast({
-    //     title: "Google Sign-In Failed",
-    //     description: error.message || "An error occurred. Please try again.",
-    //     variant: "destructive",
-    //   });
-    // } finally {
-    //   setIsGoogleLoading(false);
-    // }
-    setIsGoogleLoading(false); // Remove this line when implemented
+    try {
+      await signInWithGoogle();
+      toast({
+        title: "Google Sign-In Successful",
+        description: "You are now logged in.",
+      });
+       router.replace('/dashboard');
+    } catch (error: any) {
+      console.error("Google Sign-In failed", error);
+      toast({
+        title: "Google Sign-In Failed",
+        description: error.message || "An error occurred. Please ensure pop-ups are allowed and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGoogleLoading(false);
+    }
   };
 
   const overallLoading = isEmailLoading || isGoogleLoading || authIsLoading;
@@ -88,7 +82,6 @@ export function LoginForm() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleEmailSubmit} className="space-y-6">
-          {/* Name field removed for standard email/password login */}
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input 
@@ -122,13 +115,12 @@ export function LoginForm() {
           <span className="mx-4 text-xs uppercase text-muted-foreground">Or</span>
           <div className="flex-grow border-t border-muted"></div>
         </div>
-        <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={true || overallLoading}> {/* Disabled until implemented */}
+        <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={overallLoading}>
           {isGoogleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ChromeIcon className="mr-2 h-5 w-5" /> }
-          {isGoogleLoading ? 'Processing Google Sign-In...' : 'Sign In with Google (Coming Soon)'}
+          {isGoogleLoading ? 'Processing Google Sign-In...' : 'Sign In with Google'}
         </Button>
       </CardContent>
       <CardFooter className="flex flex-col items-center space-y-2 text-sm text-muted-foreground">
-        {/* <p>Email login is simulated. Google Sign-In uses Firebase.</p> */}
         <p>
           Don't have an account?{' '}
           <Link href="/signup" className="text-primary hover:underline">
@@ -139,3 +131,4 @@ export function LoginForm() {
     </Card>
   );
 }
+
