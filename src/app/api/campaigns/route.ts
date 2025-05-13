@@ -1,12 +1,9 @@
 
 import { NextResponse } from 'next/server';
-import { collection, addDoc, getDocs, Timestamp, query, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import type { Campaign, CampaignCreationPayload } from '@/lib/types';
 import { z } from 'zod';
-import { getInMemoryDummyCampaigns, addInMemoryDummyCampaign } from '@/lib/dummy-data-store';
 
-// Zod schema for validation
+// Zod schema for validation (remains the same)
 const segmentRuleSchema = z.object({
   id: z.string(),
   field: z.string(),
@@ -24,226 +21,75 @@ const campaignCreationSchema = z.object({
   audienceSize: z.number().min(0),
 });
 
+const API_BASE_URL = `http://localhost:${process.env.SERVER_PORT || 5000}/api`;
 
 export async function GET() {
-  try { 
-    let firebaseCampaigns: Campaign[] = [];
-    let firebaseError = false;
-
-    try { 
-      if (!db) { 
-        console.warn("GET /api/campaigns: Firestore database is not initialized. Likely Firebase config issue.");
-        firebaseError = true;
-      } else {
-        const campaignsCol = collection(db, 'campaigns');
-        const q = query(campaignsCol, orderBy('createdAt', 'desc'));
-        const campaignSnapshot = await getDocs(q);
-        
-        if (!campaignSnapshot.empty) {
-          firebaseCampaigns = campaignSnapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              name: data.name,
-              segmentName: data.segmentName,
-              rules: data.rules,
-              ruleLogic: data.ruleLogic,
-              message: data.message,
-              status: data.status,
-              audienceSize: data.audienceSize,
-              sentCount: data.sentCount,
-              failedCount: data.failedCount,
-              createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
-              updatedAt: (data.updatedAt as Timestamp)?.toDate().toISOString(),
-            } as Campaign;
-          });
-        }
+  try {
+    const response = await fetch(`${API_BASE_URL}/campaigns`, {
+      cache: 'no-store', // Ensure fresh data
+    });
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error("Error fetching campaigns from backend:", response.status, errorBody);
+      try {
+        const errorJson = JSON.parse(errorBody);
+        throw new Error(errorJson.message || `Backend error: ${response.status}`);
+      } catch {
+        throw new Error(`Failed to fetch campaigns from backend. Status: ${response.status}. Response: ${errorBody.substring(0,100)}`);
       }
-    } catch (error) {
-      console.error("Error fetching campaigns from Firebase (GET /api/campaigns):", error);
-      firebaseError = true; 
     }
-
-    const inMemoryCampaigns = getInMemoryDummyCampaigns();
-    const combinedCampaignsMap = new Map<string, Campaign>();
-
-    // Add in-memory campaigns first, so Firebase data (if available) can overwrite
-    inMemoryCampaigns.forEach(campaign => {
-      // Ensure we are putting deep copies of dummy campaigns into the map
-      combinedCampaignsMap.set(campaign.id, JSON.parse(JSON.stringify(campaign)));
-    });
-
-    firebaseCampaigns.forEach(campaign => {
-      combinedCampaignsMap.set(campaign.id, campaign); // Firebase data overwrites dummy if IDs match
-    });
-    
-    const finalCampaignList = Array.from(combinedCampaignsMap.values())
-                                   .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    if (firebaseError && firebaseCampaigns.length === 0) {
-       console.warn("Firebase error during GET /api/campaigns. Merged results will primarily use in-memory data if Firebase fetch failed or DB is uninitialized.");
-    }
-    
-    return NextResponse.json(finalCampaignList);
-
+    const campaigns: Campaign[] = await response.json();
+    return NextResponse.json(campaigns);
   } catch (error: any) {
-    console.error("--- CRITICAL UNHANDLED ERROR IN GET /api/campaigns ---");
-    console.error("Timestamp:", new Date().toISOString());
+    console.error("--- CRITICAL UNHANDLED ERROR IN GET /api/campaigns (Next.js API route) ---");
     console.error("Error Message:", error.message);
-    console.error("Error Stack:", error.stack);
-    if (typeof error === 'object' && error !== null && !(error instanceof Error)) {
-        try {
-            console.error("Full raw error object (attempting stringify):", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-        } catch (e) {
-            console.error("Full raw error object (unserializable):", error);
-        }
-    }
-    console.error("--- End of Critical Error in GET /api/campaigns ---");
-    
     return NextResponse.json(
-      { message: 'Failed to fetch campaigns due to an unexpected server error.', error: error.message || 'Unknown server error' },
+      { message: 'Failed to fetch campaigns', error: error.message || 'Unknown server error' },
       { status: 500 }
     );
   }
 }
 
 export async function POST(request: Request) {
-  console.log("POST /api/campaigns: Received request at", new Date().toISOString());
   try {
-    if (!db) { 
-      console.error("POST /api/campaigns: Firestore database is not initialized. Check Firebase configuration.");
-      return NextResponse.json({ message: 'Database not initialized. Ensure Firebase is correctly configured in .env and project settings.' }, { status: 500 });
-    }
-    console.log("POST /api/campaigns: Firestore DB instance seems available.");
-
     let body;
     try {
         body = await request.json();
     } catch (jsonError: any) {
-        console.error("POST /api/campaigns: Invalid JSON in request body:", jsonError.message);
+        console.error("POST /api/campaigns (Next.js API route): Invalid JSON in request body:", jsonError.message);
         return NextResponse.json({ message: 'Invalid JSON payload provided.', error: jsonError.message }, { status: 400 });
     }
     
-    console.log("POST /api/campaigns: Parsed request body:", JSON.stringify(body, null, 2).substring(0, 1000) + (JSON.stringify(body, null, 2).length > 1000 ? "..." : ""));
-    
     const validationResult = campaignCreationSchema.safeParse(body);
     if (!validationResult.success) {
-      console.warn("POST /api/campaigns: Validation failed for request body:", validationResult.error.flatten().fieldErrors);
+      console.warn("POST /api/campaigns (Next.js API route): Validation failed for request body:", validationResult.error.flatten().fieldErrors);
       return NextResponse.json({ 
         message: 'Invalid campaign data', 
         errors: validationResult.error.flatten().fieldErrors 
       }, { status: 400 });
     }
-    console.log("POST /api/campaigns: Request body validated successfully.");
 
-    const { name, segmentName, rules, ruleLogic, message, status, audienceSize } = validationResult.data;
+    const backendResponse = await fetch(`${API_BASE_URL}/campaigns`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(validationResult.data),
+    });
 
-    const dataToSave = {
-        name,
-        rules,
-        ruleLogic,
-        message,
-        status,
-        audienceSize,
-        createdAt: Timestamp.now(),
-        sentCount: 0, 
-        failedCount: 0, 
-        ...(segmentName && { segmentName }), 
-    };
-    
-    if (dataToSave.status === 'Sent' && dataToSave.audienceSize > 0) {
-        const successRate = Math.random() * 0.20 + 0.75; 
-        dataToSave.sentCount = Math.floor(dataToSave.audienceSize * successRate);
-        dataToSave.failedCount = dataToSave.audienceSize - dataToSave.sentCount;
-    } else if (dataToSave.status === 'Sent' && dataToSave.audienceSize === 0) {
-        dataToSave.sentCount = 0;
-        dataToSave.failedCount = 0;
-    }
+    const responseData = await backendResponse.json();
 
-    console.log("POST /api/campaigns: Data being sent to Firestore:", JSON.stringify(dataToSave, null, 2).substring(0, 500) + (JSON.stringify(dataToSave, null, 2).length > 500 ? "..." : ""));
-
-    const campaignsCol = collection(db, 'campaigns');
-    let docRef;
-    try {
-        docRef = await addDoc(campaignsCol, dataToSave);
-    } catch (firestoreError: any) {
-        console.error("--- Firestore addDoc Error in POST /api/campaigns ---");
-        console.error("Timestamp:", new Date().toISOString());
-        console.error("Error Message:", firestoreError.message);
-        console.error("Error Code:", firestoreError.code);
-        console.error("Data attempted to save:", JSON.stringify(dataToSave, null, 2).substring(0, 500) + "...");
-        console.error("Stack:", firestoreError.stack);
-        console.error("--- End of Firestore addDoc Error ---");
-        throw firestoreError; 
-    }
-    console.log("POST /api/campaigns: Document added to Firestore with ID:", docRef.id);
-    
-    const createdCampaignResponse: Campaign = {
-        id: docRef.id,
-        name: dataToSave.name,
-        segmentName: dataToSave.segmentName,
-        rules: dataToSave.rules,
-        ruleLogic: dataToSave.ruleLogic,
-        message: dataToSave.message,
-        status: dataToSave.status,
-        audienceSize: dataToSave.audienceSize,
-        sentCount: dataToSave.sentCount,
-        failedCount: dataToSave.failedCount,
-        createdAt: dataToSave.createdAt.toDate().toISOString(),
-    };
-
-    try {
-      addInMemoryDummyCampaign(createdCampaignResponse); 
-      console.log("POST /api/campaigns: Campaign added to in-memory store.");
-    } catch (inMemoryError) {
-      console.error("Error adding campaign to in-memory store after Firebase success (POST /api/campaigns):", inMemoryError);
+    if (!backendResponse.ok) {
+      console.error("Error creating campaign via backend:", backendResponse.status, responseData);
+      throw new Error(responseData.message || `Backend error: ${backendResponse.status}`);
     }
     
-    console.log("POST /api/campaigns: Successfully created campaign, returning 201 response.");
-    return NextResponse.json(createdCampaignResponse, { status: 201 });
+    return NextResponse.json(responseData, { status: backendResponse.status });
 
   } catch (error: any) {
-    console.error("--- CRITICAL ERROR IN POST /api/campaigns ---");
-    console.error("Timestamp:", new Date().toISOString());
-    
-    let errorMessage = 'An unexpected error occurred while creating the campaign.';
-    let errorDetails: Record<string, any> = { rawError: String(error) };
-
-    if (error.name === 'FirebaseError' || (error.code && typeof error.code === 'string' && (error.code.startsWith('firebase') || error.code.startsWith('firestore')) )) {
-        errorMessage = `Firebase error: ${error.message} (Code: ${error.code || 'N/A'})`;
-        errorDetails = { type: 'FirebaseError', code: error.code, firebaseMessage: error.message };
-    } else if (error instanceof z.ZodError) {
-        errorMessage = 'Invalid data format for campaign creation.';
-        errorDetails = error.flatten().fieldErrors;
-    } else if (error instanceof SyntaxError && error.message.includes("JSON")) {
-        errorMessage = 'Invalid JSON payload provided (caught by main try-catch).';
-        errorDetails = { type: 'SyntaxError', syntaxErrorMessage: error.message };
-    } else if (error instanceof Error) {
-        errorMessage = error.message;
-        errorDetails = { type: 'GenericError', genericErrorMessage: error.message, stack: error.stack?.substring(0, 300) };
-    } else if (typeof error === 'string') {
-        errorMessage = error;
-        errorDetails = { type: 'StringError', rawErrorString: error };
-    }
-    
-    console.error("Error Message:", errorMessage);
-    console.error("Error Details:", JSON.stringify(errorDetails, null, 2));
-    
-    if (typeof error === 'object' && error !== null && !(error instanceof Error)) {
-        try {
-            console.error("Full raw error object (attempting stringify):", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-        } catch (e) {
-            console.error("Full raw error object (unserializable):", error);
-        }
-    }
-    console.error("--- End of Critical Error in POST /api/campaigns ---");
-    
-    let safeErrorMessageForResponse = 'An unexpected error occurred.';
-    if (typeof errorMessage === 'string' && errorMessage.length < 200) { 
-        safeErrorMessageForResponse = errorMessage;
-    }
-
-    console.log("POST /api/campaigns: Returning error response:", { message: 'Failed to create campaign', error: safeErrorMessageForResponse });
-    return NextResponse.json({ message: 'Failed to create campaign', error: safeErrorMessageForResponse, details: errorDetails }, { status: 500 });
+    console.error("--- CRITICAL ERROR IN POST /api/campaigns (Next.js API route) ---");
+    console.error("Error Message:", error.message);
+    return NextResponse.json({ message: 'Failed to create campaign', error: error.message || 'Unknown server error' }, { status: 500 });
   }
 }
+
