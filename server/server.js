@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -9,7 +10,6 @@ try {
   if (admin.apps.length === 0) {
     if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
         const serviceAccountJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-        // Attempt to parse, handle potential errors if not valid JSON
         try {
             const serviceAccount = JSON.parse(serviceAccountJson);
             admin.initializeApp({
@@ -19,7 +19,6 @@ try {
         } catch (parseError) {
             console.error('Failed to parse GOOGLE_APPLICATION_CREDENTIALS_JSON. Ensure it is a valid JSON string.', parseError.message);
             console.error('GOOGLE_APPLICATION_CREDENTIALS_JSON (first 100 chars):', serviceAccountJson.substring(0,100));
-             // Fallback or exit if critical
         }
     } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
          admin.initializeApp({
@@ -28,13 +27,13 @@ try {
          console.log('Firebase Admin SDK initialized using GOOGLE_APPLICATION_CREDENTIALS path.');
     } else {
         console.warn('Firebase Admin SDK not initialized: GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_APPLICATION_CREDENTIALS_JSON not set.');
-        const localServiceAccountPath = './serviceAccountKey.json'; 
+        const localServiceAccountPath = './firebase-service-account.json'; // Updated filename
         if (require('fs').existsSync(localServiceAccountPath)) {
           const serviceAccount = require(localServiceAccountPath);
           admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-          console.log('Firebase Admin SDK initialized using local serviceAccountKey.json as a fallback.');
+          console.log(`Firebase Admin SDK initialized using local ${localServiceAccountPath} as a fallback.`);
         } else {
-           console.error('Local serviceAccountKey.json not found and Firebase Admin env vars not set. Admin SDK will not function.');
+           console.error(`Local ${localServiceAccountPath} not found and Firebase Admin env vars not set. Admin SDK will not function.`);
         }
     }
   } else {
@@ -57,7 +56,7 @@ const app = express();
 connectDB();
 
 // Middleware
-app.use(cors()); 
+app.use(cors({ origin: '*' })); // Allow all origins for simplicity in development
 app.use(express.json()); 
 
 // Routes
