@@ -36,9 +36,15 @@ if (typeof window !== 'undefined') {
         console.log(`IMPORTANT - If you see 'auth/unauthorized-domain' errors:
 1. Go to your Firebase project console.
 2. Navigate to Authentication -> Settings tab -> Authorized domains.
-3. Click 'Add domain' and add the domain your app is currently running on (e.g., localhost, your-app-name.vercel.app, specific_cloud_workstation_domain.dev). 
+3. Click 'Add domain' and add the domain your app is currently running on (e.g., localhost, your-app-name.vercel.app, ${window.location.hostname}).
    Your current Firebase config uses authDomain: '${firebaseConfig.authDomain}'. The domain you add must be able to host this authDomain or be the authDomain itself.
    For development, \`localhost\` is often needed. For deployed apps, ensure your production domain is listed.`);
+   
+        console.log(`
+If you see 'auth/configuration-not-found' errors:
+1. In Firebase Console -> Authentication -> Sign-in method, ensure 'Google' (and any other providers you use) is ENABLED.
+2. Ensure your project has a 'Public-facing name' and 'Project support email' configured in Firebase Console -> Project settings -> General.`);
+
 
       } else {
         console.error(
@@ -46,12 +52,12 @@ if (typeof window !== 'undefined') {
         );
         // Fallback to prevent app crash, but Firebase services won't work
         // @ts-ignore - app and auth will be undefined but code expects them
-        app = undefined; 
+        app = undefined;
         // @ts-ignore
         auth = undefined;
       }
-    } catch (error) {
-      console.error('Firebase client-side initialization failed:', error);
+    } catch (error: any) {
+      console.error('Firebase client-side initialization failed:', error.code, error.message);
       // @ts-ignore
       app = undefined;
       // @ts-ignore
@@ -63,16 +69,16 @@ if (typeof window !== 'undefined') {
   }
 } else {
   // Server-side or non-browser environment
-  // Provide dummy objects or handle appropriately if Firebase admin SDK is used server-side for other purposes.
-  // For client-side auth, these won't be directly used by AuthProvider in this state.
   // @ts-ignore
-  app = undefined; 
+  app = undefined;
   // @ts-ignore
   auth = undefined;
 }
 
-if (auth && auth.name === undefined) { // Check if auth is a dummy object
-  console.warn("Firebase Auth might not be properly initialized. Check Firebase config and initialization logs.");
+// Add a check to ensure auth is a valid Firebase Auth instance, not a dummy object
+if (auth && auth.name === undefined && typeof window !== 'undefined') { // `auth.name` is a property of a valid Auth instance
+  console.warn("Firebase Auth might not be properly initialized. Check Firebase config (NEXT_PUBLIC_FIREBASE_... variables in .env) and initialization logs.");
 }
 
-export { app, auth };
+
+export { app, auth as firebaseAuthService };
