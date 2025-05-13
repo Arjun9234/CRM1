@@ -9,18 +9,17 @@ import { firebaseAuthService } from '@/lib/firebase';
 const TOKEN_STORAGE_KEY = 'engagesphere-auth-token';
 const USER_STORAGE_KEY = 'engagesphere-auth-user';
 
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-
 const getApiBaseUrl = () => {
+  // For Vercel and similar platforms, relative paths are usually fine if API is part of the same deployment.
+  // For local development, we need the full path to the backend server.
   if (process.env.NEXT_PUBLIC_API_BASE_URL) {
-    return process.env.NEXT_PUBLIC_API_BASE_URL;
+    return process.env.NEXT_PUBLIC_API_BASE_URL; // Explicitly set URL
   }
-  if (IS_PRODUCTION) {
-    // For Vercel or similar, relative /api should work if vercel.json routes correctly
-    return '/api';
+  if (process.env.NODE_ENV === 'production') {
+    return '/api'; // Relative path for production deployments (e.g., Vercel)
   } else {
     // Local development
-    const port = process.env.NEXT_PUBLIC_SERVER_PORT || 5000;
+    const port = process.env.NEXT_PUBLIC_SERVER_PORT || process.env.SERVER_PORT || 5000;
     return `http://localhost:${port}/api`;
   }
 };
@@ -103,8 +102,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           errorBody = JSON.parse(responseText);
         } catch (e) {
-          console.error("Login failed. Server response was not JSON:", responseText.substring(0, 500));
-          throw new Error(`Login failed: ${response.status} ${response.statusText || responseText.substring(0,100)}. Check server connection and logs.`);
+          console.error(`Login failed. Server response was not JSON (Status: ${response.status}):`, responseText.substring(0, 500));
+          throw new Error(`Login failed: ${response.status} ${response.statusText || 'Server error'}. Check server connection and logs.`);
         }
         throw new Error(errorBody.message || `Login failed: ${response.status}`);
       }
@@ -114,8 +113,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       clearAuthData();
       console.error("Login failed in AuthProvider catch block:", error);
-      if (error instanceof Error && error.message.includes("Failed to fetch")) {
-        throw new Error("Failed to connect to the server. Please ensure the backend server is running and accessible.");
+      if (error instanceof Error && error.message.toLowerCase().includes("failed to fetch")) {
+        throw new Error(`Failed to connect to the server at ${loginUrl}. Please ensure the backend server is running and accessible.`);
       }
       if (error instanceof Error) {
         throw error;
@@ -142,8 +141,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         let errorBody;
         try { errorBody = JSON.parse(responseText); }
         catch (e) {
-            console.error("Signup failed. Server response was not JSON:", responseText.substring(0, 500));
-            throw new Error(`Signup failed: ${response.status} ${response.statusText || responseText.substring(0,100)}. Check server connection and logs.`);
+            console.error(`Signup failed. Server response was not JSON (Status: ${response.status}):`, responseText.substring(0, 500));
+            throw new Error(`Signup failed: ${response.status} ${response.statusText || 'Server error'}. Check server connection and logs.`);
         }
         throw new Error(errorBody.message || `Signup failed: ${response.status}`);
       }
@@ -151,8 +150,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     } catch (error) {
       console.error("Signup failed in AuthProvider:", error);
-       if (error instanceof Error && error.message.includes("Failed to fetch")) {
-        throw new Error("Failed to connect to the server for signup. Please ensure the backend server is running.");
+       if (error instanceof Error && error.message.toLowerCase().includes("failed to fetch")) {
+        throw new Error(`Failed to connect to the server for signup at ${signupUrl}. Please ensure the backend server is running.`);
       }
        if (error instanceof Error) throw error;
        throw new Error(String(error) || "An unknown signup error occurred.");
@@ -202,8 +201,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         let errorBody;
         try { errorBody = JSON.parse(responseText); }
         catch (e) {
-            console.error("Google Sign-In with backend failed. Server response was not JSON:", responseText.substring(0, 500));
-            throw new Error(`Google Sign-In with backend failed: ${response.status} ${response.statusText || responseText.substring(0,100)}. Check server connection and logs.`);
+            console.error(`Google Sign-In with backend failed. Server response was not JSON (Status: ${response.status}):`, responseText.substring(0, 500));
+            throw new Error(`Google Sign-In with backend failed: ${response.status} ${response.statusText || 'Server error'}. Check server connection and logs.`);
         }
         throw new Error(errorBody.message || `Google Sign-In with backend failed: ${response.status}`);
       }
@@ -213,19 +212,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       console.error("Google Sign-In failed in AuthProvider. Error Code:", error.code, "Message:", error.message);
       clearAuthData();
-      if (firebaseAuthService.currentUser) {
+      if (firebaseAuthService.currentUser) { // Attempt to sign out from Firebase client if pop-up succeeded but backend failed
         await firebaseSignOut(firebaseAuthService).catch(e => console.error("Error signing out Firebase after Google auth failure", e));
       }
 
       if (error.code === 'auth/unauthorized-domain') {
-        console.error("IMPORTANT: 'auth/unauthorized-domain' error. Please ensure the current domain is added to your Firebase project's 'Authorized domains' list in Authentication -> Settings. The domain to add is likely: ", window.location.hostname);
-        throw new Error("This domain is not authorized for Firebase operations. Please check your Firebase project settings. Instructions have been logged to the console.");
+        console.error(`IMPORTANT: 'auth/unauthorized-domain' error. Ensure your current domain (${window.location.hostname}) is added to Firebase Console > Authentication > Settings > Authorized domains.`);
+        throw new Error(`This domain (${window.location.hostname}) is not authorized for Firebase operations. Please check your Firebase project settings.`);
       }
       if (error.code === 'auth/popup-closed-by-user') {
         throw new Error("Google Sign-In popup was closed before completion.");
       }
-      if (error instanceof Error && error.message.includes("Failed to fetch")) {
-        throw new Error("Failed to connect to the server for Google Sign-In. Please ensure the backend server is running and accessible.");
+      if (error instanceof Error && error.message.toLowerCase().includes("failed to fetch")) {
+        throw new Error(`Failed to connect to the server for Google Sign-In at ${googleAuthUrl}. Please ensure the backend server is running and accessible.`);
       }
       if (error instanceof Error) throw error;
       throw new Error(String(error.message || error) || "An unknown Google Sign-In error occurred.");
@@ -241,3 +240,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     </AuthContext.Provider>
   );
 }
+

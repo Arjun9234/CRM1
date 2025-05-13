@@ -8,6 +8,7 @@ const admin = require('firebase-admin');
 // --- Firebase Admin SDK Initialization ---
 try {
   if (admin.apps.length === 0) {
+    console.log('Attempting to initialize Firebase Admin SDK...');
     if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
         const serviceAccountJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
         try {
@@ -15,25 +16,25 @@ try {
             admin.initializeApp({
                 credential: admin.credential.cert(serviceAccount)
             });
-            console.log('Firebase Admin SDK initialized using GOOGLE_APPLICATION_CREDENTIALS_JSON.');
+            console.log('Firebase Admin SDK initialized successfully using GOOGLE_APPLICATION_CREDENTIALS_JSON.');
         } catch (parseError) {
-            console.error('Failed to parse GOOGLE_APPLICATION_CREDENTIALS_JSON. Ensure it is a valid JSON string.', parseError.message);
-            console.error('GOOGLE_APPLICATION_CREDENTIALS_JSON (first 100 chars):', serviceAccountJson.substring(0,100));
+            console.error('Failed to parse GOOGLE_APPLICATION_CREDENTIALS_JSON. Ensure it is a valid JSON string and properly escaped if necessary.', parseError.message);
+            console.error('GOOGLE_APPLICATION_CREDENTIALS_JSON (first 100 chars for verification, avoiding full key log):', serviceAccountJson.substring(0,100) + "...");
         }
     } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
          admin.initializeApp({
              credential: admin.credential.applicationDefault()
          });
-         console.log('Firebase Admin SDK initialized using GOOGLE_APPLICATION_CREDENTIALS path.');
+         console.log('Firebase Admin SDK initialized successfully using GOOGLE_APPLICATION_CREDENTIALS file path.');
     } else {
-        console.warn('Firebase Admin SDK not initialized: GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_APPLICATION_CREDENTIALS_JSON not set.');
-        const localServiceAccountPath = './firebase-service-account.json'; // Updated filename
+        console.warn('Firebase Admin SDK initialization: GOOGLE_APPLICATION_CREDENTIALS_JSON or GOOGLE_APPLICATION_CREDENTIALS path environment variables not set.');
+        const localServiceAccountPath = './firebase-service-account.json'; 
         if (require('fs').existsSync(localServiceAccountPath)) {
           const serviceAccount = require(localServiceAccountPath);
           admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-          console.log(`Firebase Admin SDK initialized using local ${localServiceAccountPath} as a fallback.`);
+          console.log(`Firebase Admin SDK initialized using local ${localServiceAccountPath} as a fallback (intended for local development).`);
         } else {
-           console.error(`Local ${localServiceAccountPath} not found and Firebase Admin env vars not set. Admin SDK will not function.`);
+           console.error(`Local ${localServiceAccountPath} not found and Firebase Admin env vars not set. Admin SDK will not function. This is critical for authentication.`);
         }
     }
   } else {
@@ -56,8 +57,14 @@ const app = express();
 connectDB();
 
 // Middleware
-app.use(cors({ origin: '*' })); // Allow all origins for simplicity in development
+app.use(cors({ origin: '*' })); // Allow all origins for simplicity
 app.use(express.json()); 
+
+// Add COOP header for API responses
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  next();
+});
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -70,8 +77,14 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.SERVER_PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => { // Listen on 0.0.0.0
-  console.log(`Server running on port ${PORT}`);
-});
 
-module.exports = app; // Export app for Vercel
+// For local development, listen on the port. Vercel handles this differently.
+if (process.env.NODE_ENV !== 'production') { // Or a more specific check for local environment
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server running on port ${PORT} for local development`);
+    });
+}
+
+
+module.exports = app; // Export app for Vercel (or other serverless environments)
+
