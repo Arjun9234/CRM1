@@ -26,11 +26,11 @@ const campaignCreationSchema = z.object({
 
 
 export async function GET() {
-  try { // Top-level try-catch to ensure JSON response even on unexpected errors
+  try { 
     let firebaseCampaigns: Campaign[] = [];
     let firebaseError = false;
 
-    try { // Inner try-catch for Firebase specific operations
+    try { 
       if (!db) { 
         console.warn("GET /api/campaigns: Firestore database is not initialized. Likely Firebase config issue.");
         firebaseError = true;
@@ -69,7 +69,8 @@ export async function GET() {
 
     // Add in-memory campaigns first, so Firebase data (if available) can overwrite
     inMemoryCampaigns.forEach(campaign => {
-      combinedCampaignsMap.set(campaign.id, campaign);
+      // Ensure we are putting deep copies of dummy campaigns into the map
+      combinedCampaignsMap.set(campaign.id, JSON.parse(JSON.stringify(campaign)));
     });
 
     firebaseCampaigns.forEach(campaign => {
@@ -173,7 +174,7 @@ export async function POST(request: Request) {
         console.error("Data attempted to save:", JSON.stringify(dataToSave, null, 2).substring(0, 500) + "...");
         console.error("Stack:", firestoreError.stack);
         console.error("--- End of Firestore addDoc Error ---");
-        throw firestoreError; // Re-throw to be handled by the main catch block
+        throw firestoreError; 
     }
     console.log("POST /api/campaigns: Document added to Firestore with ID:", docRef.id);
     
