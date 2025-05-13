@@ -1,4 +1,4 @@
-# 🧠 Mini CRM – Xeno SDE Internship Assignment (2025)
+# 💼 EngageSphere – Xeno SDE Internship Assignment (2025)
 
 A full-stack CRM platform built for Xeno's SDE Internship Assignment. This solution empowers marketing teams to:
 
