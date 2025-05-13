@@ -12,11 +12,11 @@ const customerCreationSchema = z.object({
   avatarUrl: z.string().url().optional().or(z.literal('')),
   company: z.string().optional(),
   totalSpend: z.number().min(0).default(0),
-  lastContact: z.string().datetime({ precision: 3, offset: true }), // ISO String with milliseconds and offset
+  lastContact: z.string().datetime({ offset: true, precision: 3 }), // Expect ISO String with offset and milliseconds
   status: z.enum(['Active', 'Lead', 'Inactive', 'New', 'Archived']),
   acquisitionSource: z.string().optional(),
   tags: z.array(z.string()).optional(),
-  lastSeenOnline: z.string().datetime({ precision: 3, offset: true }).optional(), // ISO String with milliseconds and offset
+  lastSeenOnline: z.string().datetime({ offset: true, precision: 3 }).optional(), // Expect ISO String with offset and milliseconds
 });
 
 const dummyCustomers: Customer[] = [
