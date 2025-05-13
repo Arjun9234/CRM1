@@ -1,25 +1,41 @@
-
 "use client";
 
 import type { User as AppUser } from '@/lib/types';
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { auth } from '@/lib/firebase'; // Assuming firebase auth is initialized here
+import { auth as firebaseAuthService } from '@/lib/firebase'; // Renamed to avoid conflict
 
 const TOKEN_STORAGE_KEY = 'engagesphere-auth-token';
 const USER_STORAGE_KEY = 'engagesphere-auth-user';
 
-// Determine API base URL based on environment
-let expressApiBaseUrl: string;
-if (process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_PRODUCTION_API_URL) {
-  expressApiBaseUrl = process.env.NEXT_PUBLIC_PRODUCTION_API_URL;
-} else {
-  const port = process.env.NEXT_PUBLIC_SERVER_PORT || 5000;
-  expressApiBaseUrl = `http://localhost:${port}/api`;
+// This function helps determine the base URL for the API
+function getApiBaseUrl(): string {
+  // This code runs on the client side, so window is available.
+  if (process.env.NODE_ENV === 'production') {
+    // In production, use the NEXT_PUBLIC_PRODUCTION_API_URL if set.
+    // This should be the full URL to your backend, e.g., https://api.yourdomain.com
+    if (process.env.NEXT_PUBLIC_PRODUCTION_API_URL) {
+      // Ensure it doesn't end with a slash, and append /api
+      const cleanedProdUrl = process.env.NEXT_PUBLIC_PRODUCTION_API_URL.replace(/\/$/, '');
+      return `${cleanedProdUrl}/api`;
+    } else {
+      // Fallback if NEXT_PUBLIC_PRODUCTION_API_URL is not set in production.
+      // This might happen if the Next.js app and API are on the same host.
+      // We assume it's the same origin.
+      console.warn("NEXT_PUBLIC_PRODUCTION_API_URL is not set. Assuming API is at the same origin under /api. This might not work correctly if your frontend and backend are deployed to different subdomains or paths.");
+      return '/api'; // Relative path for same-origin API in production
+    }
+  } else {
+    // In development, construct the URL for the local Express server.
+    const port = process.env.NEXT_PUBLIC_SERVER_PORT || 5000;
+    const devUrl = `http://localhost:${port}/api`;
+    // console.log("Development API Base URL (for Express server):", devUrl);
+    return devUrl;
+  }
 }
 
-const API_BASE_URL = `${expressApiBaseUrl}/auth`;
-
+const EXPRESS_API_BASE_URL = getApiBaseUrl();
+const AUTH_API_ENDPOINT = `${EXPRESS_API_BASE_URL}/auth`; // Specific to auth routes
 
 interface AuthContextType {
   user: AppUser | null;
@@ -38,18 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const mapFirebaseUserToAppUser = (firebaseUser: FirebaseUser | null, jwtToken?: string): AppUser | null => {
-    if (!firebaseUser) return null;
-    return {
-      id: firebaseUser.uid,
-      name: firebaseUser.displayName,
-      email: firebaseUser.email,
-      image: firebaseUser.photoURL,
-      // If your JWT contains more user details, you might decode it here
-      // For now, basic mapping from Firebase user
-    };
-  };
-
+  // Effect to load stored token and user, and listen to Firebase auth changes
   useEffect(() => {
     const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
     const storedUserJson = localStorage.getItem(USER_STORAGE_KEY);
@@ -61,42 +66,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(storedUser);
       } catch (error) {
         console.error("Failed to parse stored user data", error);
-        clearAuthData();
+        clearAuthData(); // Clear corrupted data
       }
+    } else {
+      // If no custom token/user, rely on Firebase to potentially set user state
     }
+    setIsLoading(false); // Initial loading from localStorage done
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(firebaseAuthService, async (firebaseUser) => {
       if (firebaseUser) {
-        try {
-          const idToken = await firebaseUser.getIdToken();
-          // Here, you might want to send this idToken to your backend to exchange for your own JWT
-          // For simplicity, if we're relying on Firebase for primary auth and our backend validates Firebase tokens,
-          // this idToken could be used. Or, if login/signup sets our own JWT, that takes precedence.
-          // For now, if a Firebase user exists, and we don't have our own token,
-          // we could treat the Firebase idToken as the "token" or fetch our custom JWT.
-          // This example prioritizes custom JWT from login/signup.
-          // If only Firebase login is used, this part needs to set a token.
-          if (!localStorage.getItem(TOKEN_STORAGE_KEY)) { // Only if no custom token exists
-             // This is a simplification. In a real app with a custom backend and JWTs,
-             // you'd likely call a backend endpoint here to get or verify your custom JWT.
-             // For this example, we map the firebase user and potentially use idToken as "token".
-             // Storing Firebase ID token directly as "the token" is usually for when backend verifies Firebase tokens.
-             // setUser(mapFirebaseUserToAppUser(firebaseUser));
-             // setToken(idToken); // Example: if backend verifies this
-             // localStorage.setItem(TOKEN_STORAGE_KEY, idToken); // Example
-             // localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(mapFirebaseUserToAppUser(firebaseUser))); // Example
-          }
-        } catch (error) {
-            console.error("Error getting Firebase ID token:", error);
-            // Potentially log out if token fetch fails and it's critical
-        }
+        // If a Firebase user is detected, but we don't have our custom token,
+        // it means they likely authenticated via Google but the backend exchange for custom JWT
+        // hasn't completed or wasn't persisted.
+        // This area is tricky: if custom JWT is source of truth, Firebase state alone isn't enough.
+        // If signInWithGoogle successfully stores custom JWT, this listener mainly handles
+        // session persistence via Firebase across browser refreshes IF we re-trigger token exchange.
+        // For now, we primarily let login/signup/signInWithGoogle handle custom token storage.
       } else {
-        // If no Firebase user and no stored custom token, clear all.
+        // If Firebase user is null AND no custom token, definitely logged out.
         if (!localStorage.getItem(TOKEN_STORAGE_KEY)) {
-            // clearAuthData(); // This might be too aggressive if custom JWT is the source of truth
+            clearAuthData();
         }
       }
-      setIsLoading(false);
+      // We set isLoading to false after the first check of localStorage, 
+      // subsequent Firebase changes shouldn't toggle global isLoading unless it's a new sign-in process
     });
     return () => unsubscribe();
   }, []);
@@ -117,21 +110,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     setIsLoading(true);
+    const loginUrl = `${AUTH_API_ENDPOINT}/login`;
+    console.log(`Attempting login to: ${loginUrl}`);
     try {
-      const response = await fetch(`${API_BASE_URL}/login`, {
+      const response = await fetch(loginUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error(data.message || 'Login failed');
+        let errorBody;
+        try {
+          errorBody = await response.json(); // Try to parse error from backend
+        } catch (e) {
+          // If backend error is not JSON, read as text
+          const textError = await response.text().catch(() => `Status: ${response.statusText}`);
+          console.error("Login failed. Server response was not JSON:", textError.substring(0, 500));
+          throw new Error(`Login failed: ${response.status} ${response.statusText || textError.substring(0,50)}`);
+        }
+        // If errorBody was parsed as JSON and has a message property
+        throw new Error(errorBody.message || `Login failed: ${response.status}`);
       }
+
+      const data = await response.json();
       storeAuthData(data.token, data.user);
     } catch (error) {
-      clearAuthData(); // Clear any partial auth state
-      console.error("Login failed:", error);
-      throw error; // Re-throw to be caught by UI
+      clearAuthData();
+      console.error("Login failed in AuthProvider catch block:", error);
+      if (error instanceof Error) {
+        throw error; // Re-throw the original error object
+      } else {
+         throw new Error(String(error) || "An unknown login error occurred.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -139,23 +150,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signup = useCallback(async (name: string, email: string, password: string) => {
     setIsLoading(true);
+    const signupUrl = `${AUTH_API_ENDPOINT}/register`;
+    console.log(`Attempting signup to: ${signupUrl}`);
     try {
-      const response = await fetch(`${API_BASE_URL}/register`, {
+      const response = await fetch(signupUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password }),
       });
-      const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.message || 'Signup failed');
+        let errorBody;
+        try { errorBody = await response.json(); }
+        catch (e) { 
+            const textError = await response.text().catch(() => `Status: ${response.statusText}`);
+            throw new Error(`Signup failed: ${response.status} ${response.statusText || textError.substring(0,50)}`);
+        }
+        throw new Error(errorBody.message || `Signup failed: ${response.status}`);
       }
-      // Typically, after signup, the user is either auto-logged-in or redirected to login
-      // If auto-login, the /register endpoint should return a token and user object
-      // storeAuthData(data.token, data.user); 
-      console.log("Signup successful. User might need to log in or be auto-logged in by backend.");
+      // const data = await response.json(); // Backend register route returns token and user
+      // storeAuthData(data.token, data.user); // Auto-login after signup
+      // Or, if you want user to login manually after signup:
+      console.log("Signup successful. User can now log in.");
+
     } catch (error) {
-      console.error("Signup failed:", error);
-      throw error;
+      console.error("Signup failed in AuthProvider:", error);
+       if (error instanceof Error) throw error;
+       throw new Error(String(error) || "An unknown signup error occurred.");
     } finally {
       setIsLoading(false);
     }
@@ -164,12 +184,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     setIsLoading(true);
     try {
-      await firebaseSignOut(auth); // Sign out from Firebase
+      await firebaseSignOut(firebaseAuthService); // Sign out from Firebase
     } catch (error) {
       console.error("Firebase sign out error:", error);
-      // Continue with clearing local custom auth data regardless
     }
     clearAuthData(); // Clear custom token and user
+    // No need to call backend for logout if JWTs are stateless and handled client-side for expiry
     setIsLoading(false);
   }, []);
 
@@ -177,32 +197,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      const result = await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(firebaseAuthService, provider);
       const firebaseUser = result.user;
       const idToken = await firebaseUser.getIdToken();
       
-      // Send this idToken to your backend to verify and get a custom JWT
-      const response = await fetch(`${API_BASE_URL}/google`, { // Assuming a new /api/auth/google endpoint
+      const googleAuthUrl = `${AUTH_API_ENDPOINT}/google`;
+      console.log(`Attempting Google sign-in exchange with backend: ${googleAuthUrl}`);
+      const response = await fetch(googleAuthUrl, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}` // Send Firebase ID token
+          'Authorization': `Bearer ${idToken}` 
         },
       });
-      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Google Sign-In with backend failed');
+        let errorBody;
+        try { errorBody = await response.json(); }
+        catch (e) { 
+            const textError = await response.text().catch(() => `Status: ${response.statusText}`);
+            throw new Error(`Google Sign-In with backend failed: ${response.status} ${response.statusText || textError.substring(0,50)}`);
+        }
+        throw new Error(errorBody.message || `Google Sign-In with backend failed: ${response.status}`);
       }
-      // Backend returns its own JWT and user data
+      const data = await response.json();
       storeAuthData(data.token, data.user);
 
     } catch (error) {
-      console.error("Google Sign-In failed:", error);
-      // Clear any partial state if needed
+      console.error("Google Sign-In failed in AuthProvider:", error);
       clearAuthData(); 
-      await firebaseSignOut(auth).catch(e => console.error("Error signing out Firebase after Google auth failure", e));
-      throw error;
+      await firebaseSignOut(firebaseAuthService).catch(e => console.error("Error signing out Firebase after Google auth failure", e));
+      if (error instanceof Error) throw error;
+      throw new Error(String(error) || "An unknown Google Sign-In error occurred.");
     } finally {
       setIsLoading(false);
     }
