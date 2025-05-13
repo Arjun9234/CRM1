@@ -1,10 +1,8 @@
-
 import { NextResponse } from 'next/server';
 import type { Campaign, CampaignCreationPayload } from '@/lib/types';
 import { z } from 'zod';
-// Removed: import { getInMemoryDummyCampaigns, addInMemoryDummyCampaign } from '@/lib/dummy-data-store';
+import { API_BASE_URL as BACKEND_API_BASE_URL } from '@/lib/config'; // Renamed to avoid conflict
 
-// Zod schema for validation
 const segmentRuleSchema = z.object({
   id: z.string(),
   field: z.string(),
@@ -20,14 +18,13 @@ const campaignCreationSchema = z.object({
   message: z.string().min(1, "Message is required"),
   status: z.enum(['Draft', 'Scheduled', 'Sent', 'Failed', 'Archived', 'Cancelled']),
   audienceSize: z.number().min(0),
-  // sentCount and failedCount are typically set by backend or derived
 });
 
-const API_BASE_URL = `http://localhost:${process.env.SERVER_PORT || 5000}/api`;
+// const API_BASE_URL = `http://localhost:${process.env.SERVER_PORT || 5000}/api`; // Removed
 
 export async function GET() {
   try {
-    const response = await fetch(`${API_BASE_URL}/campaigns`, {
+    const response = await fetch(`${BACKEND_API_BASE_URL}/campaigns`, {
       cache: 'no-store', 
     });
     const responseText = await response.text();
@@ -81,7 +78,7 @@ export async function POST(request: Request) {
     
     const validatedPayload = validationResult.data as CampaignCreationPayload;
 
-    const backendResponse = await fetch(`${API_BASE_URL}/campaigns`, {
+    const backendResponse = await fetch(`${BACKEND_API_BASE_URL}/campaigns`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

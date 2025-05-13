@@ -1,8 +1,6 @@
-
 "use client";
 
 import AppLayout from "@/components/layout/app-layout";
-// import { CreateCampaignForm } from "@/components/campaigns/create-campaign-form"; // Not used here
 import { Separator } from "@/components/ui/separator";
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -13,33 +11,37 @@ import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EditCampaignForm } from "@/components/campaigns/edit-campaign-form";
 import { useAuth } from "@/hooks/use-auth";
+import { API_BASE_URL } from '@/lib/config'; // Import centralized API_BASE_URL
 
-const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`;
+// const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`; // Removed
 
 async function fetchCampaignForEdit(campaignId: string, token: string | null): Promise<Campaign> {
-  // const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  // if (token) {
-  //   headers['x-auth-token'] = token;
-  // }
-  const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}` /*, { headers } */);
+  console.log(`fetchCampaignForEdit (client): Fetching campaign ${campaignId} from ${API_BASE_URL}/campaigns/${campaignId}`);
+  const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}`);
   
   if (!response.ok) {
-    let errorMessage = `Failed to fetch campaign ${campaignId} (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+    let errorMessage = `Failed to fetch campaign ${campaignId} for editing (Status: ${response.status} ${response.statusText || 'Unknown Status'})`; 
      try {
         const errorBody = await response.text();
          if (errorBody.toLowerCase().includes("<html")) {
              errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs.`;
-        } else {
+        } else if (errorBody && errorBody.trim().startsWith('{') && errorBody.trim().endsWith('}')) { 
             const errorData = JSON.parse(errorBody);
-            errorMessage = errorData.message || `Failed to fetch campaign ${campaignId}`;
+            errorMessage = errorData.message || `Failed to fetch campaign ${campaignId} for editing`;
+        } else if (errorBody) { 
+            errorMessage = `Failed to fetch campaign ${campaignId} for editing. Server response: ${errorBody.substring(0, 200)}`;
         }
     } catch (e) {
-        errorMessage = `Failed to fetch campaign ${campaignId}. Server returned non-JSON error (Status: ${response.status}).`;
+        errorMessage = `Failed to fetch campaign ${campaignId} for editing. Server returned non-JSON error (Status: ${response.status}).`;
     }
     throw new Error(errorMessage);
   }
   const data = await response.json();
-  return { ...data, id: data._id }; // Map _id to id
+  if (!data || !data._id) { 
+    console.error(`fetchCampaignForEdit (client): Fetched data for campaign ${campaignId} is invalid or missing ID. Data:`, data);
+    throw new Error(`Fetched campaign data for ${campaignId} is invalid or missing ID.`);
+  }
+  return { ...data, id: data._id }; 
 }
 
 
@@ -52,7 +54,7 @@ export default function EditCampaignPage() {
   const { data: campaign, isLoading, error, isError } = useQuery<Campaign>({
     queryKey: ['campaign', campaignId, 'edit'], 
     queryFn: () => fetchCampaignForEdit(campaignId, token),
-    enabled: !!campaignId, // && !!token, // Only fetch if campaignId and token are available
+    enabled: !!campaignId, 
   });
 
 

@@ -1,4 +1,3 @@
-
 "use client";
 import AppLayout from "@/components/layout/app-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -30,11 +29,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle, AlertDescription as UiAlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
+import { API_BASE_URL } from '@/lib/config'; // Import centralized API_BASE_URL
 
-const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`;
+// const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`; // Removed
 
 async function fetchCustomers(token: string | null): Promise<Customer[]> {
-  console.log("fetchCustomers (client): Initiating fetch from /api/customers");
+  console.log(`fetchCustomers (client): Initiating fetch from ${API_BASE_URL}/customers`);
   const response = await fetch(`${API_BASE_URL}/customers`);
   
   const responseText = await response.text();
@@ -73,7 +73,7 @@ async function fetchCustomers(token: string | null): Promise<Customer[]> {
   try {
     const data = JSON.parse(responseText);
     console.log(`fetchCustomers (client): Successfully fetched ${data.length} customers.`);
-    return data.map((c: any) => ({ ...c, id: c._id })); // Map _id to id
+    return data.map((c: any) => ({ ...c, id: c._id })); 
   } catch (e) {
     console.error("Error parsing successful JSON response (fetchCustomers):", e, "Body:", responseText.substring(0,500));
     throw new Error("Failed to parse successful customer list from server.");
@@ -81,7 +81,7 @@ async function fetchCustomers(token: string | null): Promise<Customer[]> {
 }
 
 async function createCustomer(payload: CustomerCreationPayload, token: string | null): Promise<{message?: string; customer: Customer}> {
-  console.log("createCustomer (client): Initiating POST to /api/customers with payload (first 300 chars):", JSON.stringify(payload).substring(0,300) + "...");
+  console.log(`createCustomer (client): Initiating POST to ${API_BASE_URL}/customers with payload (first 300 chars):`, JSON.stringify(payload).substring(0,300) + "...");
   
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   
@@ -232,11 +232,11 @@ export default function CustomersPage() {
       avatarUrl: "",
       company: "",
       totalSpend: 0,
-      lastContact: formatISO(new Date()).substring(0, 16), // Format for datetime-local
+      lastContact: formatISO(new Date()).substring(0, 16), 
       status: "New",
       acquisitionSource: "",
       tags: "",
-      lastSeenOnline: formatISO(new Date()).substring(0, 16), // Format for datetime-local
+      lastSeenOnline: formatISO(new Date()).substring(0, 16), 
     },
   });
 
@@ -454,5 +454,3 @@ export default function CustomersPage() {
     </AppLayout>
   );
 }
-
-    

@@ -1,9 +1,7 @@
-
 import { NextResponse } from 'next/server';
 import type { CampaignUpdatePayload, Campaign } from '@/lib/types';
 import { z } from 'zod';
-// Removed: import { getCampaignById, updateInMemoryDummyCampaign, deleteInMemoryDummyCampaign } from '@/lib/dummy-data-store';
-
+import { API_BASE_URL as BACKEND_API_BASE_URL } from '@/lib/config'; // Renamed to avoid conflict if this file also defined API_BASE_URL locally
 
 const segmentRuleSchema = z.object({
   id: z.string(),
@@ -24,7 +22,7 @@ const campaignUpdateSchema = z.object({
   failedCount: z.number().min(0).optional(),
 }).partial();
 
-const API_BASE_URL = `http://localhost:${process.env.SERVER_PORT || 5000}/api`;
+// const API_BASE_URL = `http://localhost:${process.env.SERVER_PORT || 5000}/api`; // Removed
 
 export async function GET(
   request: Request,
@@ -36,7 +34,7 @@ export async function GET(
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}`);
+    const response = await fetch(`${BACKEND_API_BASE_URL}/campaigns/${campaignId}`);
     const responseData = await response.json();
 
     if (!response.ok) {
@@ -77,7 +75,7 @@ export async function PUT(
   const validatedDataToUpdate: CampaignUpdatePayload = validationResult.data;
 
   try {
-    const backendResponse = await fetch(`${API_BASE_URL}/campaigns/${campaignId}`, {
+    const backendResponse = await fetch(`${BACKEND_API_BASE_URL}/campaigns/${campaignId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -110,28 +108,27 @@ export async function DELETE(
   }
 
   try {
-    const backendResponse = await fetch(`${API_BASE_URL}/campaigns/${campaignId}`, {
+    const backendResponse = await fetch(`${BACKEND_API_BASE_URL}/campaigns/${campaignId}`, {
       method: 'DELETE',
     });
 
     if (!backendResponse.ok) {
       let errorData;
       try {
-        if (backendResponse.status !== 204) { // 204 No Content might not have a body
+        if (backendResponse.status !== 204) { 
            errorData = await backendResponse.json();
         }
       } catch (e) {
-        // If parsing JSON fails, use the status text
         errorData = { message: `Backend error: ${backendResponse.statusText || backendResponse.status}` };
       }
       console.error(`Error deleting campaign ${campaignId} via backend:`, backendResponse.status, errorData);
       throw new Error(errorData?.message || `Backend error: ${backendResponse.status}`);
     }
     
-    if (backendResponse.status === 204) { // Handle 204 No Content
+    if (backendResponse.status === 204) { 
         return NextResponse.json({ message: 'Campaign deleted successfully' });
     }
-    const responseData = await backendResponse.json(); // For 200 OK with body
+    const responseData = await backendResponse.json(); 
     return NextResponse.json(responseData);
 
   } catch (error) {

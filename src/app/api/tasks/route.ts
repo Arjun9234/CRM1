@@ -1,7 +1,7 @@
-
 import { NextResponse } from 'next/server';
 import type { Task, TaskCreationPayload } from '@/lib/types';
 import { z } from 'zod';
+import { API_BASE_URL as BACKEND_API_BASE_URL } from '@/lib/config'; // Renamed to avoid conflict
 
 const taskStatusOptions: ['To Do', 'In Progress', 'Completed', 'Blocked', 'Archived'] = ['To Do', 'In Progress', 'Completed', 'Blocked', 'Archived'];
 const taskPriorityOptions: ['High', 'Medium', 'Low'] = ['High', 'Medium', 'Low'];
@@ -17,11 +17,11 @@ const taskCreationSchema = z.object({
   tags: z.array(z.string()).optional(),
 });
 
-const API_BASE_URL = `http://localhost:${process.env.SERVER_PORT || 5000}/api`;
+// const API_BASE_URL = `http://localhost:${process.env.SERVER_PORT || 5000}/api`; // Removed
 
 export async function GET() {
   try {
-    const response = await fetch(`${API_BASE_URL}/tasks`, {
+    const response = await fetch(`${BACKEND_API_BASE_URL}/tasks`, {
       cache: 'no-store',
     });
     if (!response.ok) {
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
     
-    const backendResponse = await fetch(`${API_BASE_URL}/tasks`, {
+    const backendResponse = await fetch(`${BACKEND_API_BASE_URL}/tasks`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

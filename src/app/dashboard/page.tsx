@@ -1,4 +1,3 @@
-
 "use client";
 
 import AppLayout from "@/components/layout/app-layout";
@@ -15,43 +14,41 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from '@tanstack/react-query';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Terminal } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth"; // To get token for authenticated requests if needed
+import { useAuth } from "@/hooks/use-auth"; 
+import { API_BASE_URL } from '@/lib/config'; // Import centralized API_BASE_URL
 
-const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`;
+// const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`; // Removed
 
 async function fetchCampaigns(token: string | null): Promise<Campaign[]> {
-  // const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  // if (token) {
-  //   headers['x-auth-token'] = token;
-  // }
-  // For GET requests, token might not be needed if routes are public for now, or added later with middleware
-  const response = await fetch(`${API_BASE_URL}/campaigns`, { cache: 'no-store' /*, headers */ });
+  console.log(`fetchCampaigns (client): Fetching campaigns from ${API_BASE_URL}/campaigns`);
+  const response = await fetch(`${API_BASE_URL}/campaigns`, { cache: 'no-store' });
   
   if (!response.ok) {
     let errorMessage = `Failed to fetch campaigns (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+    let errorBodyText = "";
     try {
-        const errorBody = await response.text();
-        if (errorBody.toLowerCase().includes("<html")) {
+        errorBodyText = await response.text();
+        if (errorBodyText.toLowerCase().includes("<html")) {
              errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs.`;
-        } else {
-            const errorData = JSON.parse(errorBody);
+             console.error("Full HTML error from server (fetchCampaigns):", errorBodyText.substring(0,1000));
+        } else if (errorBodyText) {
+            const errorData = JSON.parse(errorBodyText);
             errorMessage = errorData.message || `Failed to fetch campaigns (Status: ${response.status})`;
         }
     } catch (e) {
-        // Failed to parse error body or it wasn't JSON
-         errorMessage = `Failed to fetch campaigns. Server returned non-JSON error (Status: ${response.status}).`;
+         errorMessage = `Failed to fetch campaigns. Server returned non-JSON error (Status: ${response.status}). Preview: ${errorBodyText.substring(0,100)}`;
     }
     throw new Error(errorMessage);
   }
-  return response.json();
+  const campaigns = await response.json();
+  return campaigns.map((c: any) => ({...c, id: c._id})); // Map _id to id
 }
 
 export default function DashboardPage() {
-  const { token } = useAuth(); // Assuming useAuth provides the token
+  const { token } = useAuth(); 
   const { data: campaigns = [], isLoading, error, isFetching } = useQuery<Campaign[]>({
     queryKey: ['campaigns'],
     queryFn: () => fetchCampaigns(token),
-    // enabled: !!token, // Only fetch if token is available, if routes are protected
   });
 
   const sortedCampaigns = useMemo(() => {
@@ -102,7 +99,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (error) {
+  if (error && !isFetching) { // Only show full error if not actively fetching (e.g. on initial load error)
     return (
       <AppLayout>
         <div className="container mx-auto p-4">

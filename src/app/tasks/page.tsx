@@ -1,4 +1,3 @@
-
 "use client";
 import AppLayout from "@/components/layout/app-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -29,16 +28,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle, AlertDescription as UiAlertDescription } from "@/components/ui/alert"; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
+import { API_BASE_URL } from '@/lib/config'; // Import centralized API_BASE_URL
 
-const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`;
+// const API_BASE_URL = `http://localhost:${process.env.SERVER_PORT || 5000}/api`; // Removed
 
 async function fetchTasks(token: string | null): Promise<Task[]> {
-  console.log("fetchTasks (client): Initiating fetch from /api/tasks");
-  // const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  // if (token) {
-  //   headers['x-auth-token'] = token;
-  // }
-  const response = await fetch(`${API_BASE_URL}/tasks` /*, { headers } */);
+  console.log(`fetchTasks (client): Initiating fetch from ${API_BASE_URL}/tasks`);
+  const response = await fetch(`${API_BASE_URL}/tasks`);
   
   const responseText = await response.text();
 
@@ -56,6 +52,8 @@ async function fetchTasks(token: string | null): Promise<Task[]> {
                 const errorData = JSON.parse(responseText);
                 errorMessage = errorData.message || errorData.error || errorMessage;
                 errorDetails = errorData.errors || errorData.details || errorData;
+            } else if (responseText.toLowerCase().includes("<html")) {
+                errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs.`;
             } else {
                  errorMessage = `Server error while fetching tasks: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`;
             }
@@ -72,20 +70,17 @@ async function fetchTasks(token: string | null): Promise<Task[]> {
   try {
     const data = JSON.parse(responseText);
     console.log(`fetchTasks (client): Successfully fetched ${data.length} tasks.`);
-    return data.map((t: any) => ({ ...t, id: t._id })); // Map _id to id
+    return data.map((t: any) => ({ ...t, id: t._id })); 
   } catch (e) {
     console.error("Error parsing successful JSON response (fetchTasks):", e, "Body:", responseText.substring(0,500));
     throw new Error("Failed to parse successful task list from server.");
   }
 }
 
-async function createTask(payload: TaskCreationPayload, token: string | null): Promise<{task: Task}> {
-    console.log("createTask (client): Initiating POST to /api/tasks with payload (first 300 chars):", JSON.stringify(payload).substring(0,300) + "...");
+async function createTask(payload: TaskCreationPayload, token: string | null): Promise<{message?: string; task: Task}> {
+    console.log(`createTask (client): Initiating POST to ${API_BASE_URL}/tasks with payload (first 300 chars):`, JSON.stringify(payload).substring(0,300) + "...");
     
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
-    // if (token) {
-    //   headers['x-auth-token'] = token;
-    // }
 
     const response = await fetch(`${API_BASE_URL}/tasks`, {
         method: 'POST',
@@ -110,6 +105,8 @@ async function createTask(payload: TaskCreationPayload, token: string | null): P
                     errorMessage = errorData.message || errorData.error || errorMessage;
                     errorDetails = errorData.errors || errorData.details || errorData;
                     if (errorDetails && typeof errorDetails !== 'object') errorDetails = { info: errorDetails };
+                } else if (responseText.toLowerCase().includes("<html")) {
+                    errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs.`;
                 } else {
                     errorMessage = `Server error while creating task: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`;
                     console.error("Full non-JSON error from server (createTask):", responseText);
@@ -230,7 +227,6 @@ export default function TasksPage() {
   const { data: tasks = [], isLoading, error, isFetching } = useQuery<Task[]>({
     queryKey: ['tasks'],
     queryFn: () => fetchTasks(token),
-    // enabled: !!token, // if auth is required
   });
 
   const { control, handleSubmit, reset, formState: { errors: formErrors } } = useForm<z.infer<typeof taskFormSchema>>({
@@ -238,7 +234,7 @@ export default function TasksPage() {
     defaultValues: {
       title: "",
       description: "",
-      dueDate: formatISO(addDays(new Date(), 7)).substring(0,16), // Format for datetime-local
+      dueDate: formatISO(addDays(new Date(), 7)).substring(0,16), 
       priority: "Medium",
       status: "To Do",
       assignedTo: "",
@@ -253,7 +249,7 @@ export default function TasksPage() {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       toast({ title: "Task Added", description: data.message || `Task "${data.task.title}" has been successfully added.` });
       setIsAddTaskDialogOpen(false);
-      reset({ // Reset with current datetime-local compatible strings
+      reset({ 
         title: "", description: "",
         dueDate: formatISO(addDays(new Date(), 7)).substring(0,16),
         priority: "Medium", status: "To Do",
@@ -272,6 +268,8 @@ export default function TasksPage() {
           } else if (errorDetails.info) {
              description += `\nInfo: ${errorDetails.info}`;
           }
+      } else if (errorDetails) {
+        description += `\nDetails: ${String(errorDetails)}`;
       }
       toast({ title: "Error Adding Task", description: description, variant: "destructive", duration: 8000 });
     },
@@ -280,7 +278,7 @@ export default function TasksPage() {
   const onAddTaskSubmit = (data: z.infer<typeof taskFormSchema>) => {
     const payload: TaskCreationPayload = {
       ...data,
-      dueDate: new Date(data.dueDate).toISOString(), // Convert to full ISO string
+      dueDate: new Date(data.dueDate).toISOString(), 
       tags: data.tags || [], 
       project: data.project || undefined, 
     };
@@ -340,7 +338,7 @@ export default function TasksPage() {
             <Dialog open={isAddTaskDialogOpen} onOpenChange={(isOpen) => {
                 setIsAddTaskDialogOpen(isOpen);
                 if (!isOpen) {
-                    reset({ // Reset with current datetime-local compatible strings
+                    reset({ 
                         title: "", description: "",
                         dueDate: formatISO(addDays(new Date(), 7)).substring(0,16),
                         priority: "Medium", status: "To Do",

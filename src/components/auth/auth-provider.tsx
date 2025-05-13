@@ -1,30 +1,15 @@
-
 "use client";
 
 import type { User as AppUser } from '@/lib/types';
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { firebaseAuthService } from '@/lib/firebase';
+import { API_BASE_URL } from '@/lib/config'; // Import centralized API_BASE_URL
 
 const TOKEN_STORAGE_KEY = 'engagesphere-auth-token';
 const USER_STORAGE_KEY = 'engagesphere-auth-user';
 
-const getApiBaseUrl = () => {
-  // For Vercel and similar platforms, relative paths are usually fine if API is part of the same deployment.
-  // For local development, we need the full path to the backend server.
-  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
-    return process.env.NEXT_PUBLIC_API_BASE_URL; // Explicitly set URL
-  }
-  if (process.env.NODE_ENV === 'production') {
-    return '/api'; // Relative path for production deployments (e.g., Vercel)
-  } else {
-    // Local development
-    const port = process.env.NEXT_PUBLIC_SERVER_PORT || process.env.SERVER_PORT || 5000;
-    return `http://localhost:${port}/api`;
-  }
-};
-
-const API_BASE_URL = getApiBaseUrl();
+// const API_BASE_URL = getApiBaseUrl(); // Removed: now imported
 const AUTH_API_ENDPOINT = `${API_BASE_URL}/auth`;
 
 
@@ -59,14 +44,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearAuthData();
       }
     }
-    setIsLoading(false);
+    // setIsLoading(false); // Moved down to ensure onAuthStateChanged listener is effective
 
 
     const unsubscribe = onAuthStateChanged(firebaseAuthService, async (firebaseUser) => {
       if (!firebaseUser && !localStorage.getItem(TOKEN_STORAGE_KEY)) { 
         clearAuthData();
-        setIsLoading(false); 
       }
+      // Always set loading to false after the check, regardless of user state
+      setIsLoading(false); 
     });
     return () => unsubscribe();
   }, []);
@@ -146,6 +132,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         throw new Error(errorBody.message || `Signup failed: ${response.status}`);
       }
+      // Signup successful, but user still needs to log in with newly created credentials.
+      // The original prompt implied user should be redirected to login, which is a common pattern.
       console.log("Signup successful. User can now log in.");
 
     } catch (error) {
@@ -212,7 +200,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       console.error("Google Sign-In failed in AuthProvider. Error Code:", error.code, "Message:", error.message);
       clearAuthData();
-      if (firebaseAuthService.currentUser) { // Attempt to sign out from Firebase client if pop-up succeeded but backend failed
+      if (firebaseAuthService.currentUser) { 
         await firebaseSignOut(firebaseAuthService).catch(e => console.error("Error signing out Firebase after Google auth failure", e));
       }
 
@@ -240,4 +228,3 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     </AuthContext.Provider>
   );
 }
-

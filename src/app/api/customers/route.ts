@@ -1,7 +1,7 @@
-
 import { NextResponse } from 'next/server';
 import type { Customer, CustomerCreationPayload } from '@/lib/types';
 import { z } from 'zod';
+import { API_BASE_URL as BACKEND_API_BASE_URL } from '@/lib/config'; // Renamed to avoid conflict
 
 const customerStatusOptions: ['Active', 'Lead', 'Inactive', 'New', 'Archived'] = ['Active', 'Lead', 'Inactive', 'New', 'Archived'];
 
@@ -18,11 +18,11 @@ const customerCreationSchema = z.object({
   lastSeenOnline: z.string().datetime({ offset: true }).optional(),
 });
 
-const API_BASE_URL = `http://localhost:${process.env.SERVER_PORT || 5000}/api`;
+// const API_BASE_URL = `http://localhost:${process.env.SERVER_PORT || 5000}/api`; // Removed
 
 export async function GET() {
   try {
-    const response = await fetch(`${API_BASE_URL}/customers`, {
+    const response = await fetch(`${BACKEND_API_BASE_URL}/customers`, {
       cache: 'no-store',
     });
     if (!response.ok) {
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    const backendResponse = await fetch(`${API_BASE_URL}/customers`, {
+    const backendResponse = await fetch(`${BACKEND_API_BASE_URL}/customers`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

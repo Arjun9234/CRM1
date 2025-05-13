@@ -1,4 +1,3 @@
-
 "use client";
 
 import AppLayout from "@/components/layout/app-layout";
@@ -27,17 +26,14 @@ import { format } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { API_BASE_URL } from '@/lib/config'; // Import centralized API_BASE_URL
 
-const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`;
+// const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`; // Removed
 
 async function fetchCampaign(campaignId: string, token: string | null): Promise<Campaign> {
-  console.log(`fetchCampaign (client): Fetching campaign ${campaignId}`);
-  // const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  // if (token) {
-  //   headers['x-auth-token'] = token;
-  // }
-  const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}` /*, { headers } */);
-  const responseText = await response.text();
+  console.log(`fetchCampaign (client): Fetching campaign ${campaignId} from ${API_BASE_URL}/campaigns/${campaignId}`);
+  const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}`);
+  const responseText = await response.text(); 
 
   if (!response.ok) {
     let errorMessage = `Failed to fetch campaign ${campaignId} (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
@@ -47,9 +43,15 @@ async function fetchCampaign(campaignId: string, token: string | null): Promise<
         errorMessage = `Failed to fetch campaign: The server took too long to respond (Gateway Timeout). This might be a temporary issue.`;
     } else {
         try {
-            const errorData = JSON.parse(responseText);
-            errorMessage = errorData.message || `Failed to fetch campaign ${campaignId}`;
-            errorDetails = errorData.errors || errorData.details || errorData;
+             if (responseText && responseText.trim().startsWith('{') && responseText.trim().endsWith('}')) {
+                const errorData = JSON.parse(responseText);
+                errorMessage = errorData.message || `Failed to fetch campaign ${campaignId}`;
+                errorDetails = errorData.errors || errorData.details || errorData;
+            } else if (responseText.toLowerCase().includes("<html")) {
+                 errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs.`;
+            } else if (responseText) {
+                 errorMessage = responseText.substring(0, 200);
+            }
         } catch (e) {
              // If parsing JSON fails, use the original generic message
         }
@@ -61,8 +63,12 @@ async function fetchCampaign(campaignId: string, token: string | null): Promise<
   }
   try {
     const data = JSON.parse(responseText);
+    if (!data || !data._id) {
+        console.error(`fetchCampaign (client): Fetched data for campaign ${campaignId} is invalid or missing ID. Data:`, data);
+        throw new Error(`Fetched campaign data for ${campaignId} is invalid or missing ID.`);
+    }
     console.log(`fetchCampaign (client): Successfully fetched campaign ${campaignId}`);
-    return { ...data, id: data._id }; // Map _id to id
+    return { ...data, id: data._id }; 
   } catch (e) {
       console.error(`fetchCampaign (client): Error parsing successful JSON response for ${campaignId}:`, e, "Body:", responseText.substring(0,500));
       throw new Error(`Failed to parse campaign data for ${campaignId}.`);
@@ -70,17 +76,12 @@ async function fetchCampaign(campaignId: string, token: string | null): Promise<
 }
 
 async function deleteCampaignApi(campaignId: string, token: string | null): Promise<void> {
-  console.log(`deleteCampaign (client): Deleting campaign ${campaignId}`);
-  // const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  // if (token) {
-  //   headers['x-auth-token'] = token;
-  // }
+  console.log(`deleteCampaign (client): Deleting campaign ${campaignId} via ${API_BASE_URL}/campaigns/${campaignId}`);
   const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}`, {
     method: 'DELETE',
-    // headers,
   });
   
-  const responseText = await response.text();
+  const responseText = await response.text(); 
 
   if (!response.ok) {
     let errorMessage = `Failed to delete campaign ${campaignId} (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
@@ -90,9 +91,15 @@ async function deleteCampaignApi(campaignId: string, token: string | null): Prom
         errorMessage = `Failed to delete campaign: The server took too long to respond (Gateway Timeout). Please try again later.`;
     } else {
         try {
-            const errorData = JSON.parse(responseText);
-            errorMessage = errorData.message || `Failed to delete campaign ${campaignId}`;
-            errorDetails = errorData.errors || errorData.details || errorData;
+            if (responseText && responseText.trim().startsWith('{') && responseText.trim().endsWith('}')) {
+                const errorData = JSON.parse(responseText);
+                errorMessage = errorData.message || `Failed to delete campaign ${campaignId}`;
+                errorDetails = errorData.errors || errorData.details || errorData;
+            } else if (responseText.toLowerCase().includes("<html")){
+                 errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}) while deleting campaign ${campaignId}.`;
+            } else if (responseText) { 
+                errorMessage = responseText.substring(0, 200); 
+            }
         } catch (e) {
              // If parsing JSON fails, use the original generic message
         }
@@ -142,7 +149,7 @@ export default function CampaignDetailPage() {
   const { data: campaign, isLoading, error, isError, isFetching } = useQuery({
     queryKey: ['campaign', campaignId],
     queryFn: () => fetchCampaign(campaignId, token),
-    enabled: !!campaignId, // && !!token,
+    enabled: !!campaignId, 
   });
 
   const deleteMutation = useMutation({
@@ -251,7 +258,7 @@ export default function CampaignDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)} disabled={campaign.status === 'Sent' || campaign.status === 'Archived' || campaign.status === 'Failed' || deleteMutation.isPending}>
+            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)} disabled={deleteMutation.isPending}>
                 <Edit3 className="mr-2 h-4 w-4"/> Edit
             </Button>
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}> 
