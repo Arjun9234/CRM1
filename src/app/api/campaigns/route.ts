@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import type { Campaign, CampaignCreationPayload } from '@/lib/types';
 import { z } from 'zod';
 
-// Zod schema for validation (remains the same)
+// Zod schema for validation
 const segmentRuleSchema = z.object({
   id: z.string(),
   field: z.string(),
