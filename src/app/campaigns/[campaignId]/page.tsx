@@ -1,3 +1,4 @@
+
 "use client";
 
 import AppLayout from "@/components/layout/app-layout";
@@ -30,7 +31,7 @@ import { API_BASE_URL } from '@/lib/config';
 
 async function fetchCampaign(idToFetch: string, token: string | null): Promise<Campaign> {
   // Robust check at the very beginning
-  if (typeof idToFetch !== 'string' || idToFetch.trim() === '' || idToFetch.toLowerCase() === 'undefined') {
+  if (typeof idToFetch !== 'string' || idToFetch.trim() === '' || idToFetch.toLowerCase() === 'undefined' || idToFetch.toLowerCase() === 'null') {
     const errorMessage = `fetchCampaign (client): Received invalid idToFetch: '${idToFetch}' (type: ${typeof idToFetch}). This should ideally be caught by the caller's 'enabled' logic in useQuery. Aborting API call.`;
     console.error(errorMessage);
     throw new Error(errorMessage); // This error will be caught by React Query
@@ -82,7 +83,7 @@ async function fetchCampaign(idToFetch: string, token: string | null): Promise<C
 }
 
 async function deleteCampaignApi(campaignId: string, token: string | null): Promise<void> {
-  if (typeof campaignId !== 'string' || campaignId.trim() === '' || campaignId.toLowerCase() === 'undefined') {
+  if (typeof campaignId !== 'string' || campaignId.trim() === '' || campaignId.toLowerCase() === 'undefined' || campaignId.toLowerCase() === 'null') {
     const errorMsg = `deleteCampaignApi (client): Invalid campaignId received: '${campaignId}'. Aborting delete.`;
     console.error(errorMsg);
     throw new Error(errorMsg);
@@ -160,10 +161,13 @@ export default function CampaignDetailPage() {
 
   // Validate campaignIdFromParams before using it for queryKey or as enabled flag
   const getValidCampaignIdForQuery = (id: string | undefined): string | null => {
-    if (typeof id === 'string' && id.trim() !== '' && id.toLowerCase() !== 'undefined') {
-      return id;
+    // If id is the JS primitive undefined, or the string "undefined", or "null", or empty/whitespace
+    if (id === undefined || typeof id !== 'string' || id.trim() === '' || id.toLowerCase() === 'undefined' || id.toLowerCase() === 'null') {
+      console.warn(`getValidCampaignIdForQuery: Received invalid campaignId: '${id}' (type: ${typeof id}). Returning null.`);
+      return null;
     }
-    return null;
+    // If it's a valid string (not empty, not "undefined", not "null")
+    return id;
   };
 
   const campaignIdForQuery = getValidCampaignIdForQuery(campaignIdFromParams);
@@ -171,28 +175,26 @@ export default function CampaignDetailPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false); 
 
   const { data: campaign, isLoading, error, isError, isFetching } = useQuery<Campaign, Error>({
-    queryKey: ['campaign', campaignIdForQuery], // Use validated ID or null for the key
+    queryKey: ['campaign', campaignIdForQuery], 
     queryFn: async () => {
       if (!campaignIdForQuery) { 
-        // This should ideally not be reached if 'enabled' is false, but serves as a safeguard.
         console.error("useQuery queryFn: campaignIdForQuery is null or invalid. Aborting fetch attempt.");
         throw new Error("Campaign ID is not available or invalid for fetching.");
       }
       return fetchCampaign(campaignIdForQuery, token);
     },
-    enabled: !!campaignIdForQuery, // Query will only run if campaignIdForQuery is a valid string
+    enabled: !!campaignIdForQuery, 
     retry: (failureCount, err) => {
-        // Don't retry for 404s or our specific invalid ID errors
-        if (err.message.includes("404") || err.message.toLowerCase().includes("invalid campaign id")) {
+        if (err.message.includes("404") || err.message.toLowerCase().includes("invalid campaign id") || err.message.toLowerCase().includes("not available or invalid")) {
           return false;
         }
-        return failureCount < 2; // Retry up to 2 times for other errors
+        return failureCount < 2; 
     },
   });
 
-  const deleteMutation = useMutation<void, Error, void>({ // Specify types for mutation
+  const deleteMutation = useMutation<void, Error, void>({ 
     mutationFn: () => {
-        if(!campaignIdForQuery) { // Use the validated ID
+        if(!campaignIdForQuery) { 
             return Promise.reject(new Error("Cannot delete campaign: ID is missing or invalid."));
         }
         return deleteCampaignApi(campaignIdForQuery, token);
@@ -218,14 +220,13 @@ export default function CampaignDetailPage() {
   });
 
   const handleDeleteCampaign = () => {
-    if (campaignIdForQuery) { // Ensure campaignId is valid before mutating
+    if (campaignIdForQuery) { 
       deleteMutation.mutate();
     } else {
         toast({ title: "Error", description: "Campaign ID is missing or invalid, cannot delete.", variant: "destructive"});
     }
   };
 
-  // UI logic for invalid ID from URL, before query even attempts
   if (!isLoading && !isFetching && !campaignIdForQuery) {
     return (
       <AppLayout>
@@ -262,7 +263,6 @@ export default function CampaignDetailPage() {
     );
   }
 
-  // This condition now correctly handles query errors or if the query ran but found no campaign
   if (isError || (!campaign && !isFetching && campaignIdForQuery)) { 
     return (
       <AppLayout>
@@ -280,7 +280,6 @@ export default function CampaignDetailPage() {
     );
   }
   
-  // If campaign is still undefined after loading and no error, it's a strange state, render loading skeleton
   if (!campaign) { 
      return (
       <AppLayout>
