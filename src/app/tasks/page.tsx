@@ -4,7 +4,7 @@ import AppLayout from "@/components/layout/app-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ListChecks, PlusCircle, CalendarDays, User, Tag, Flag, Loader2, AlertTriangle, FolderKanban } from "lucide-react"; // Added FolderKanban for project
+import { ListChecks, PlusCircle, CalendarDays, User, Tag, Flag, Loader2, AlertTriangle, FolderKanban } from "lucide-react";
 import type { Task, TaskStatus, TaskPriority, TaskCreationPayload } from "@/lib/types";
 import { format, formatISO, addDays } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -26,13 +26,23 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertTitle, AlertDescription as UiAlertDescription } from "@/components/ui/alert"; // Renamed AlertDescription to avoid conflict
+import { Alert, AlertTitle, AlertDescription as UiAlertDescription } from "@/components/ui/alert"; 
 
 async function fetchTasks(): Promise<Task[]> {
   const response = await fetch('/api/tasks');
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Failed to fetch tasks');
+    let errorMessage = `Failed to fetch tasks (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+    if (response.status === 504) {
+        errorMessage = `Failed to fetch tasks: The server took too long to respond (Gateway Timeout). This might be a temporary issue.`;
+    } else {
+        try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || 'Failed to fetch tasks';
+        } catch (e) {
+            // If parsing JSON fails, use the original generic message
+        }
+    }
+    throw new Error(errorMessage);
   }
   return response.json();
 }
@@ -44,8 +54,18 @@ async function createTask(payload: TaskCreationPayload): Promise<Task> {
         body: JSON.stringify(payload),
     });
     if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to create task');
+        let errorMessage = `Failed to create task (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+        if (response.status === 504) {
+            errorMessage = `Failed to create task: The server took too long to respond (Gateway Timeout). Please try again later.`;
+        } else {
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.message || 'Failed to create task';
+            } catch (e) {
+                // If parsing JSON fails, use the original generic message
+            }
+        }
+        throw new Error(errorMessage);
     }
     const result = await response.json();
     return result.task;
@@ -58,7 +78,7 @@ const taskFormSchema = z.object({
   priority: z.enum(['High', 'Medium', 'Low']).default('Medium'),
   status: z.enum(['To Do', 'In Progress', 'Completed', 'Blocked', 'Archived']).default('To Do'),
   assignedTo: z.string().optional(),
-  project: z.string().optional(), // Added project
+  project: z.string().optional(),
   tags: z.string().optional().transform(val => val ? val.split(',').map(tag => tag.trim()).filter(tag => tag) : []),
 });
 
@@ -147,7 +167,7 @@ export default function TasksPage() {
       priority: "Medium",
       status: "To Do",
       assignedTo: "",
-      project: "", // Added project
+      project: "",
       tags: "",
     },
   });
@@ -161,7 +181,7 @@ export default function TasksPage() {
       reset();
     },
     onError: (error: Error) => {
-      toast({ title: "Error Adding Task", description: error.message, variant: "destructive" });
+      toast({ title: "Error Adding Task", description: error.message, variant: "destructive", duration: 8000 });
     },
   });
 
@@ -170,7 +190,7 @@ export default function TasksPage() {
       ...data,
       dueDate: formatISO(new Date(data.dueDate)), 
       tags: data.tags || [],
-      project: data.project || undefined, // Ensure project is passed
+      project: data.project || undefined, 
     };
     createTaskMutation.mutate(payload);
   };

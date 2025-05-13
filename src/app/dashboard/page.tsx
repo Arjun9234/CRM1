@@ -18,29 +18,31 @@ import { Terminal } from "lucide-react";
 
 async function fetchCampaigns(): Promise<Campaign[]> {
   const response = await fetch('/api/campaigns', { cache: 'no-store' });
-  const responseBody = await response.text(); // Read body as text first
+  const responseBody = await response.text();
 
   if (!response.ok) {
-    // Attempt to parse as JSON for structured error, otherwise use text
-    try {
-      const errorData = JSON.parse(responseBody);
-      throw new Error(errorData.message || `Failed to fetch campaigns (Status: ${response.status})`);
-    } catch (e) {
-      // If parsing fails, it's not JSON (likely HTML)
-      const preview = responseBody.substring(0, 500); // Limit preview length
-      // Check if the preview indicates a common Firebase issue or generic HTML
-      if (responseBody.toLowerCase().includes("firebase") && responseBody.toLowerCase().includes("error")) {
-         throw new Error(`Failed to fetch campaigns. Server returned a Firebase-related error (Status: ${response.status}). Please check Firebase configuration and API route logs. Response preview: ${preview}...`);
-      }
-      throw new Error(`Failed to fetch campaigns. Server returned non-JSON error (Status: ${response.status}). Response preview: ${preview}...`);
+    let errorMessage = `Failed to fetch campaigns (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+    if (response.status === 504) {
+        errorMessage = `Failed to fetch campaigns: The server took too long to respond (Gateway Timeout). This might be a temporary issue.`;
+    } else {
+        try {
+            const errorData = JSON.parse(responseBody);
+            errorMessage = errorData.message || `Failed to fetch campaigns (Status: ${response.status})`;
+        } catch (e) {
+            if (responseBody.toLowerCase().includes("firebase") && responseBody.toLowerCase().includes("error")) {
+                errorMessage = `Failed to fetch campaigns. Server returned a Firebase-related error (Status: ${response.status}). Please check Firebase configuration and API route logs. Response preview: ${responseBody.substring(0, 200)}...`;
+            } else {
+                errorMessage = `Failed to fetch campaigns. Server returned non-JSON error (Status: ${response.status}). Response preview: ${responseBody.substring(0, 200)}...`;
+            }
+        }
     }
+    throw new Error(errorMessage);
   }
 
-  // If response.ok, try to parse as JSON
   try {
     return JSON.parse(responseBody);
   } catch (e) {
-    const preview = responseBody.substring(0, 500); // Limit preview length
+    const preview = responseBody.substring(0, 500); 
     throw new Error(`Successfully fetched campaigns (Status: ${response.status}), but failed to parse response as JSON. Response preview: ${preview}...`);
   }
 }
@@ -73,7 +75,7 @@ export default function DashboardPage() {
   }, [sortedCampaigns]);
 
   const campaignsForDisplay = sortedCampaigns;
-  const campaignsForChart = useMemo(() => sortedCampaigns.slice(0, 6), [sortedCampaigns]);
+  const campaignsForChart = useMemo(() => sortedCampaigns.slice(0, 30).reverse(), [sortedCampaigns]);
 
 
   if (isLoading) {
@@ -149,4 +151,3 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
-

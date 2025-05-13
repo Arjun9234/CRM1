@@ -2,7 +2,7 @@
 "use client";
 
 import AppLayout from "@/components/layout/app-layout";
-import { CreateCampaignForm } from "@/components/campaigns/create-campaign-form"; // We can adapt this
+import { CreateCampaignForm } from "@/components/campaigns/create-campaign-form"; 
 import { Separator } from "@/components/ui/separator";
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -16,8 +16,18 @@ import { EditCampaignForm } from "@/components/campaigns/edit-campaign-form";
 async function fetchCampaignForEdit(campaignId: string): Promise<Campaign> {
   const response = await fetch(`/api/campaigns/${campaignId}`);
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || `Failed to fetch campaign ${campaignId}`);
+    let errorMessage = `Failed to fetch campaign ${campaignId} (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+    if (response.status === 504) {
+        errorMessage = `Failed to fetch campaign for editing: The server took too long to respond (Gateway Timeout). This might be a temporary issue.`;
+    } else {
+        try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || `Failed to fetch campaign ${campaignId}`;
+        } catch (e) {
+            // If parsing JSON fails, use the original generic message
+        }
+    }
+    throw new Error(errorMessage);
   }
   return response.json();
 }
@@ -29,7 +39,7 @@ export default function EditCampaignPage() {
   const campaignId = params.campaignId as string;
 
   const { data: campaign, isLoading, error, isError } = useQuery<Campaign>({
-    queryKey: ['campaign', campaignId, 'edit'], // Unique query key for edit context
+    queryKey: ['campaign', campaignId, 'edit'], 
     queryFn: () => fetchCampaignForEdit(campaignId),
     enabled: !!campaignId,
   });

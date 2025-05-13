@@ -39,41 +39,45 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
     let errorMessage = `Failed to create campaign (status: ${response.status} ${response.statusText || 'Unknown Status Text'})`;
     let errorBodyText = "";
 
-    try {
-      errorBodyText = await response.text();
-      const contentType = response.headers.get("content-type");
+    if (response.status === 504) {
+        errorMessage = `Failed to create campaign: The server took too long to respond (Gateway Timeout). Please try again later.`;
+    } else {
+        try {
+            errorBodyText = await response.text();
+            const contentType = response.headers.get("content-type");
 
-      if (contentType && contentType.includes("application/json")) {
-        const errorData = JSON.parse(errorBodyText);
-        errorMessage = errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : errorMessage);
-        if (errorData.errors) {
-          const errorDetails = Object.entries(errorData.errors)
-            .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
-            .join('; ');
-          errorMessage = `Invalid data: ${errorMessage}. Details: ${errorDetails}`;
+            if (contentType && contentType.includes("application/json")) {
+                const errorData = JSON.parse(errorBodyText);
+                errorMessage = errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : errorMessage);
+                if (errorData.errors) {
+                const errorDetails = Object.entries(errorData.errors)
+                    .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
+                    .join('; ');
+                errorMessage = `Invalid data: ${errorMessage}. Details: ${errorDetails}`;
+                }
+            } else if (errorBodyText.toLowerCase().includes("<html")) {
+                errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs.`;
+                console.error("Full HTML error response from server (Create Campaign):", errorBodyText.substring(0, 1000)); // Log a snippet
+            } else if (errorBodyText) {
+                errorMessage = `Server error (status: ${response.status}). Response: ${errorBodyText.substring(0, 200)}`;
+            }
+        } catch (e) {
+            console.warn("Error processing/parsing error response body during campaign creation. Status:", response.status, e);
+            if (errorBodyText.toLowerCase().includes("<html")) {
+                errorMessage = `Server returned an unparsable HTML error (status: ${response.status}). Check server logs.`;
+            } else if (errorBodyText) {
+                errorMessage = `Failed to parse error response (status: ${response.status}). Raw response preview: ${errorBodyText.substring(0,100)}`;
+            } else {
+                errorMessage = `Failed to create campaign (status: ${response.status} ${response.statusText || 'Unknown Status Text'}). Could not retrieve detailed error message.`;
+            }
         }
-      } else if (errorBodyText.toLowerCase().includes("<html")) {
-        errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs.`;
-        console.error("Full HTML error response from server (Create Campaign):", errorBodyText.substring(0, 1000)); // Log a snippet
-      } else if (errorBodyText) {
-        errorMessage = `Server error (status: ${response.status}). Response: ${errorBodyText.substring(0, 200)}`;
-      }
-    } catch (e) {
-      console.warn("Error processing/parsing error response body during campaign creation. Status:", response.status, e);
-      if (errorBodyText.toLowerCase().includes("<html")) {
-         errorMessage = `Server returned an unparsable HTML error (status: ${response.status}). Check server logs.`;
-      } else if (errorBodyText) {
-         errorMessage = `Failed to parse error response (status: ${response.status}). Raw response preview: ${errorBodyText.substring(0,100)}`;
-      } else {
-         errorMessage = `Failed to create campaign (status: ${response.status} ${response.statusText || 'Unknown Status Text'}). Could not retrieve detailed error message.`;
-      }
     }
     
     console.error("--- Create Campaign API Error Details (Frontend) ---");
     console.error("Status:", response.status);
     console.error("StatusText:", response.statusText || "Unknown Status Text");
     console.error("Final Error Message to be Thrown:", errorMessage);
-    if (!errorBodyText.toLowerCase().includes("<html")) { 
+    if (errorBodyText && !errorBodyText.toLowerCase().includes("<html")) { 
         console.error("Error Body Preview (if not HTML):", errorBodyText.substring(0, 500));
     }
     console.error("--- End of Create Campaign Error Details (Frontend) ---");
@@ -82,7 +86,12 @@ async function createCampaign(payload: CampaignCreationPayload): Promise<Campaig
   }
 
   try {
-    return await response.json();
+    const result = await response.json();
+     if (!result || !result.id) { // Assuming successful creation returns the campaign object with an ID
+        console.error("Campaign creation response missing ID or data:", result);
+        throw new Error("Campaign created, but response data is invalid.");
+    }
+    return result;
   } catch (e) {
     const responseBodyForDebug = await response.text().catch(() => "Could not read response body again.");
     console.error("Server returned OK (e.g. 201), but with non-JSON success response during campaign creation:", response.status, "Body:", responseBodyForDebug, e);
@@ -127,8 +136,8 @@ export function CreateCampaignForm() {
     mutationFn: createCampaign,
     onSuccess: (data: Campaign) => { 
       toast({
-        title: "Campaign Created!",
-        description: `Campaign "${data.name || campaignName}" successfully added with status: ${data.status}.`,
+        title: "Campaign Created Successfully!",
+        description: `Campaign "${data.name || campaignName}" has been added with status: ${data.status}.`,
       });
       queryClient.invalidateQueries({ queryKey: ['campaigns'] }); 
       router.push("/dashboard");

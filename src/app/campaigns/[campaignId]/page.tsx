@@ -13,10 +13,10 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription as AlertDialogPrimitiveDescription, // Aliased to avoid conflict
+  AlertDialogDescription as AlertDialogPrimitiveDescription, 
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle as AlertDialogPrimitiveTitle, // Aliased to avoid conflict
+  AlertDialogTitle as AlertDialogPrimitiveTitle, 
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { ArrowLeft, Users, CheckCircle, XCircle, Target, CalendarDays, MessageSquare, SlidersHorizontal, AlertTriangle, BarChart, Edit3, Trash2, Loader2, Ban } from "lucide-react";
@@ -30,8 +30,18 @@ import { useState } from "react";
 async function fetchCampaign(campaignId: string): Promise<Campaign> {
   const response = await fetch(`/api/campaigns/${campaignId}`);
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || `Failed to fetch campaign ${campaignId}`);
+    let errorMessage = `Failed to fetch campaign ${campaignId} (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+     if (response.status === 504) {
+        errorMessage = `Failed to fetch campaign: The server took too long to respond (Gateway Timeout). This might be a temporary issue.`;
+    } else {
+        try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || `Failed to fetch campaign ${campaignId}`;
+        } catch (e) {
+            // If parsing JSON fails, use the original generic message
+        }
+    }
+    throw new Error(errorMessage);
   }
   return response.json();
 }
@@ -41,8 +51,18 @@ async function deleteCampaign(campaignId: string): Promise<void> {
     method: 'DELETE',
   });
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || `Failed to delete campaign ${campaignId}`);
+    let errorMessage = `Failed to delete campaign ${campaignId} (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+    if (response.status === 504) {
+        errorMessage = `Failed to delete campaign: The server took too long to respond (Gateway Timeout). Please try again later.`;
+    } else {
+        try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || `Failed to delete campaign ${campaignId}`;
+        } catch (e) {
+             // If parsing JSON fails, use the original generic message
+        }
+    }
+    throw new Error(errorMessage);
   }
 }
 
@@ -77,7 +97,7 @@ export default function CampaignDetailPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const campaignId = params.campaignId as string;
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false); // Corrected useState destructuring
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false); 
 
   const { data: campaign, isLoading, error, isError } = useQuery({
     queryKey: ['campaign', campaignId],
@@ -94,15 +114,16 @@ export default function CampaignDetailPage() {
       });
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       router.push('/dashboard');
-      setIsDeleteDialogOpen(false); // Close dialog on success
+      setIsDeleteDialogOpen(false); 
     },
     onError: (error: Error) => {
       toast({
         title: "Error Deleting Campaign",
         description: error.message,
         variant: "destructive",
+        duration: 8000,
       });
-      setIsDeleteDialogOpen(false); // Close dialog on error as well
+      setIsDeleteDialogOpen(false); 
     },
   });
 
@@ -177,10 +198,10 @@ export default function CampaignDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)}>
+            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)} disabled={campaign.status === 'Sent' || campaign.status === 'Archived' || campaign.status === 'Failed'}>
                 <Edit3 className="mr-2 h-4 w-4"/> Edit
             </Button>
-            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}> {/* Corrected onOpenChange */}
+            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}> 
               <AlertDialogTrigger asChild>
                  <Button variant="destructive">
                     <Trash2 className="mr-2 h-4 w-4"/> Delete
@@ -188,8 +209,8 @@ export default function CampaignDetailPage() {
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogPrimitiveTitle>Are you sure?</AlertDialogPrimitiveTitle> {/* Use aliased import */}
-                  <AlertDialogPrimitiveDescription> {/* Use aliased import */}
+                  <AlertDialogPrimitiveTitle>Are you sure?</AlertDialogPrimitiveTitle> 
+                  <AlertDialogPrimitiveDescription> 
                     This action cannot be undone. This will permanently delete the campaign
                     "{campaign.name}".
                   </AlertDialogPrimitiveDescription>

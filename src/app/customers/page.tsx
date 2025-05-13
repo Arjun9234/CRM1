@@ -35,18 +35,22 @@ async function fetchCustomers(): Promise<Customer[]> {
   const response = await fetch('/api/customers');
   if (!response.ok) {
     let errorMessage = `Failed to fetch customers (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
-    try {
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        const errorData = await response.json();
-        errorMessage = errorData.message || errorData.error || errorMessage;
-      } else {
-        const textError = await response.text();
-        errorMessage = `Server error: ${textError.substring(0, 100)}${textError.length > 100 ? '...' : ''}`;
-        console.error("Full non-JSON error from server (fetchCustomers):", textError);
-      }
-    } catch (e) {
-      console.error("Error processing error response (fetchCustomers):", e);
+    if (response.status === 504) {
+        errorMessage = `Failed to fetch customers: The server took too long to respond (Gateway Timeout). This might be a temporary issue.`;
+    } else {
+        try {
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+                const errorData = await response.json();
+                errorMessage = errorData.message || errorData.error || errorMessage;
+            } else {
+                const textError = await response.text();
+                errorMessage = `Server error while fetching customers: ${textError.substring(0, 100)}${textError.length > 100 ? '...' : ''}`;
+                console.error("Full non-JSON error from server (fetchCustomers):", textError);
+            }
+        } catch (e) {
+            console.error("Error processing error response (fetchCustomers):", e);
+        }
     }
     throw new Error(errorMessage);
   }
@@ -67,24 +71,28 @@ async function createCustomer(payload: CustomerCreationPayload): Promise<Custome
 
   if (!response.ok) {
     let errorMessage = `Failed to create customer (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
-    try {
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        const errorData = await response.json();
-        errorMessage = errorData.message || errorData.error || errorMessage;
-        if (errorData.errors) {
-          const fieldErrors = Object.entries(errorData.errors)
-            .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
-            .join('; ');
-          errorMessage = `Invalid data: ${fieldErrors || errorMessage}`;
+    if (response.status === 504) {
+        errorMessage = `Failed to create customer: The server took too long to respond (Gateway Timeout). Please try again later.`;
+    } else {
+        try {
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+                const errorData = await response.json();
+                errorMessage = errorData.message || errorData.error || errorMessage;
+                if (errorData.errors) {
+                    const fieldErrors = Object.entries(errorData.errors)
+                        .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
+                        .join('; ');
+                    errorMessage = `Invalid data: ${fieldErrors || errorMessage}`;
+                }
+            } else {
+                const textError = await response.text();
+                errorMessage = `Server error while creating customer: ${textError.substring(0, 200)}${textError.length > 200 ? '...' : ''}`;
+                console.error("Full non-JSON error from server (createCustomer):", textError);
+            }
+        } catch (e) {
+            console.error("Error processing/parsing error response (createCustomer):", e);
         }
-      } else {
-        const textError = await response.text();
-        errorMessage = `Server error: ${textError.substring(0, 200)}${textError.length > 200 ? '...' : ''}`; // Increased preview length
-        console.error("Full non-JSON error from server (createCustomer):", textError);
-      }
-    } catch (e) {
-      console.error("Error processing/parsing error response (createCustomer):", e);
     }
     throw new Error(errorMessage);
   }
@@ -188,11 +196,11 @@ export default function CustomersPage() {
       avatarUrl: "",
       company: "",
       totalSpend: 0,
-      lastContact: formatISO(new Date()).split('T')[0], // Default to today's date
+      lastContact: formatISO(new Date()).split('T')[0], 
       status: "New",
       acquisitionSource: "",
       tags: "",
-      lastSeenOnline: formatISO(new Date()).split('T')[0], // Default to today's date
+      lastSeenOnline: formatISO(new Date()).split('T')[0], 
     },
   });
 
@@ -344,7 +352,7 @@ export default function CustomersPage() {
             {sortedCustomers.map(customer => <CustomerCard key={customer.id} customer={customer} />)}
           </div>
         ) : (
-          <Card className="shadow-lg col-span-full"> {/* Ensures this card spans full width if no customers */}
+          <Card className="shadow-lg col-span-full"> 
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">
                 <Briefcase className="h-6 w-6 text-primary" />
