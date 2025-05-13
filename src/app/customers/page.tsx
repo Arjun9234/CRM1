@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Users, PlusCircle, Search, Loader2, AlertTriangle, ShoppingBag, Eye } from "lucide-react";
 import type { Customer, CustomerStatus, CustomerCreationPayload } from "@/lib/types";
-import { format, subDays, subMonths, formatISO, formatDistanceToNow } from "date-fns";
+import { format, formatISO, formatDistanceToNow } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -57,7 +57,7 @@ const customerFormSchema = z.object({
   email: z.string().email("Invalid email address"),
   company: z.string().optional(),
   status: z.enum(['Active', 'Lead', 'Inactive', 'New', 'Archived']).default('New'),
-  acquisitionSource: z.string().optional(), // Added
+  acquisitionSource: z.string().optional(), 
 });
 
 
@@ -100,7 +100,7 @@ export default function CustomersPage() {
       reset();
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error Adding Customer", description: error.message, variant: "destructive" });
     },
   });
 
@@ -110,8 +110,8 @@ export default function CustomersPage() {
       avatarUrl: `https://picsum.photos/seed/${encodeURIComponent(data.email)}/40/40`, 
       totalSpend: 0,
       lastContact: formatISO(new Date()), 
-      lastSeenOnline: formatISO(new Date()), // Also set lastSeenOnline on creation
-      tags: data.status ? [data.status] : [], // Add status as a tag
+      lastSeenOnline: formatISO(new Date()), // Ensure lastSeenOnline is included
+      tags: data.status ? [data.status] : [], 
       acquisitionSource: data.acquisitionSource || undefined,
     };
     createCustomerMutation.mutate(payload);

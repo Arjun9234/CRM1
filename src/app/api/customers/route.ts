@@ -16,6 +16,7 @@ const customerCreationSchema = z.object({
   status: z.enum(['Active', 'Lead', 'Inactive', 'New', 'Archived']),
   acquisitionSource: z.string().optional(), 
   tags: z.array(z.string()).optional(),
+  lastSeenOnline: z.string().datetime().optional(), // Added lastSeenOnline
 });
 
 const dummyCustomers: Customer[] = [
@@ -153,12 +154,12 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
     
-    const { lastContact, ...restOfData } = validationResult.data;
+    const { lastContact, lastSeenOnline, ...restOfData } = validationResult.data;
 
-    const newCustomerData: CustomerCreationPayload & { createdAt: Timestamp, lastContact: Timestamp, lastSeenOnline: Timestamp } = {
+    const newCustomerData = { // No need for CustomerCreationPayload type assertion here, it's inferred
       ...restOfData,
       lastContact: Timestamp.fromDate(new Date(lastContact)),
-      lastSeenOnline: Timestamp.now(), 
+      lastSeenOnline: lastSeenOnline ? Timestamp.fromDate(new Date(lastSeenOnline)) : Timestamp.now(), 
       createdAt: Timestamp.now(),
     };
 
@@ -177,16 +178,23 @@ export async function POST(request: Request) {
         throw firestoreError;
     }
     
-    const createdCustomer = {
+    const createdCustomerResponse = { // Explicitly construct the response type
         id: docRef.id,
-        ...newCustomerData,
-        createdAt: newCustomerData.createdAt.toDate().toISOString(),
+        name: newCustomerData.name,
+        email: newCustomerData.email,
+        avatarUrl: newCustomerData.avatarUrl,
+        company: newCustomerData.company,
+        totalSpend: newCustomerData.totalSpend,
+        status: newCustomerData.status,
+        acquisitionSource: newCustomerData.acquisitionSource,
+        tags: newCustomerData.tags,
         lastContact: newCustomerData.lastContact.toDate().toISOString(),
         lastSeenOnline: newCustomerData.lastSeenOnline.toDate().toISOString(),
+        createdAt: newCustomerData.createdAt.toDate().toISOString(),
     };
 
     console.log("POST /api/customers: Successfully created customer, returning 201 response.");
-    return NextResponse.json({ message: 'Customer created successfully', customer: createdCustomer }, { status: 201 });
+    return NextResponse.json({ message: 'Customer created successfully', customer: createdCustomerResponse }, { status: 201 });
 
   } catch (error: any) {
     console.error("--- CRITICAL ERROR IN POST /api/customers ---");
