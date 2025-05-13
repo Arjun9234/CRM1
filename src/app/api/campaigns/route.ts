@@ -19,6 +19,7 @@ const campaignCreationSchema = z.object({
   message: z.string().min(1, "Message is required"),
   status: z.enum(['Draft', 'Scheduled', 'Sent', 'Failed', 'Archived', 'Cancelled']),
   audienceSize: z.number().min(0),
+  // sentCount and failedCount are typically set by backend or derived
 });
 
 const API_BASE_URL = `http://localhost:${process.env.SERVER_PORT || 5000}/api`;
@@ -29,20 +30,21 @@ export async function GET() {
       cache: 'no-store', // Ensure fresh data
     });
     if (!response.ok) {
-      const errorBody = await response.text();
-      console.error("Error fetching campaigns from backend:", response.status, errorBody);
+      const errorBody = await response.text(); // Read body once
+      console.error("Error fetching campaigns from backend:", response.status, errorBody ? errorBody.substring(0, 500) : "Empty error body");
+      let errorMessage = `Backend error: ${response.status}`;
       try {
-        // Check if errorBody is HTML
-        if (errorBody.trim().startsWith("<html")) {
-          throw new Error(`Backend returned an HTML error page (status: ${response.status}). Check backend server logs.`);
+        if (errorBody && errorBody.trim().toLowerCase().startsWith("<html")) {
+          errorMessage = `Backend returned an HTML error page (status: ${response.status}). Check backend server logs.`;
+        } else if (errorBody) {
+          const errorJson = JSON.parse(errorBody);
+          errorMessage = errorJson.message || errorMessage;
         }
-        const errorJson = JSON.parse(errorBody);
-        throw new Error(errorJson.message || `Backend error: ${response.status}`);
       } catch(e: any) {
         // If JSON.parse fails or it was an HTML error initially caught
-        if (e.message.includes("HTML error page")) throw e; // rethrow specific HTML error
-        throw new Error(`Failed to fetch campaigns from backend. Status: ${response.status}. Response: ${errorBody.substring(0,100)}`);
+        errorMessage = `Failed to fetch campaigns from backend. Status: ${response.status}. Response: ${errorBody ? errorBody.substring(0,100) : "Empty response"}`;
       }
+      throw new Error(errorMessage);
     }
     const campaigns: Campaign[] = await response.json();
     return NextResponse.json(campaigns);
@@ -83,11 +85,26 @@ export async function POST(request: Request) {
       body: JSON.stringify(validationResult.data),
     });
 
-    const responseData = await backendResponse.json();
+    // Try to parse JSON regardless of status, as backend might send JSON error details
+    let responseData;
+    const responseText = await backendResponse.text();
+    try {
+        responseData = JSON.parse(responseText);
+    } catch (e) {
+        // If JSON parsing fails, and it's an error, use the text as error message
+        if (!backendResponse.ok) {
+            console.error("Error creating campaign via backend, non-JSON response:", backendResponse.status, responseText);
+            throw new Error(responseText.substring(0, 200) || `Backend error: ${backendResponse.status}`);
+        }
+        // If it was OK but not JSON, this is unexpected
+        console.warn("Backend response was OK but not valid JSON:", responseText);
+        responseData = { message: "Campaign created, but response format was unexpected." }; // Or handle as error
+    }
+
 
     if (!backendResponse.ok) {
       console.error("Error creating campaign via backend:", backendResponse.status, responseData);
-      throw new Error(responseData.message || `Backend error: ${backendResponse.status}`);
+      throw new Error(responseData?.message || `Backend error: ${backendResponse.status}`);
     }
     
     return NextResponse.json(responseData, { status: backendResponse.status });
