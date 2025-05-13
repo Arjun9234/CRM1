@@ -35,11 +35,7 @@ const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 
 
 async function fetchCustomers(token: string | null): Promise<Customer[]> {
   console.log("fetchCustomers (client): Initiating fetch from /api/customers");
-  // const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  // if (token) {
-  //   headers['x-auth-token'] = token;
-  // }
-  const response = await fetch(`${API_BASE_URL}/customers` /*, { headers } */);
+  const response = await fetch(`${API_BASE_URL}/customers`);
   
   const responseText = await response.text();
 
@@ -57,7 +53,11 @@ async function fetchCustomers(token: string | null): Promise<Customer[]> {
                 const errorData = JSON.parse(responseText);
                 errorMessage = errorData.message || errorData.error || errorMessage;
                 errorDetails = errorData.errors || errorData.details || errorData;
-            } else { 
+            } else if (responseText.toLowerCase().includes("<html")) {
+                errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs. Preview: ${responseText.substring(0,200)}`;
+                console.error("Full HTML error from server (fetchCustomers):", responseText.substring(0,1000));
+            }
+             else { 
                  errorMessage = `Server error while fetching customers: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`;
             }
         } catch (e) {
@@ -80,13 +80,10 @@ async function fetchCustomers(token: string | null): Promise<Customer[]> {
   }
 }
 
-async function createCustomer(payload: CustomerCreationPayload, token: string | null): Promise<{customer: Customer}> {
+async function createCustomer(payload: CustomerCreationPayload, token: string | null): Promise<{message?: string; customer: Customer}> {
   console.log("createCustomer (client): Initiating POST to /api/customers with payload (first 300 chars):", JSON.stringify(payload).substring(0,300) + "...");
   
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  // if (token) {
-  //   headers['x-auth-token'] = token;
-  }
   
   const response = await fetch(`${API_BASE_URL}/customers`, {
     method: 'POST',
@@ -111,7 +108,11 @@ async function createCustomer(payload: CustomerCreationPayload, token: string | 
                 errorMessage = errorData.message || errorData.error || errorMessage;
                 errorDetails = errorData.errors || errorData.details || errorData;
                 if (errorDetails && typeof errorDetails !== 'object') errorDetails = { info: errorDetails };
-            } else { 
+            } else if (responseText.toLowerCase().includes("<html")) {
+                 errorMessage = `Server returned an unexpected HTML error (status: ${response.status}). Please check server logs.`;
+                 console.error("Full HTML error from server (createCustomer):", responseText.substring(0,1000));
+            }
+            else { 
                 errorMessage = `Server error while creating customer: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`;
                 console.error("Full non-JSON error from server (createCustomer):", responseText);
             }
@@ -221,7 +222,6 @@ export default function CustomersPage() {
   const { data: customers = [], isLoading, error, isFetching } = useQuery<Customer[]>({
     queryKey: ['customers'],
     queryFn: () => fetchCustomers(token),
-    // enabled: !!token, // If auth is required
   });
 
   const { control, handleSubmit, reset, formState: { errors: formErrors } } = useForm<z.infer<typeof customerFormSchema>>({
@@ -246,7 +246,7 @@ export default function CustomersPage() {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       toast({ title: "Customer Added", description: data.message || `Customer "${data.customer.name}" has been successfully added.` });
       setIsAddCustomerDialogOpen(false);
-      reset({ // Reset with current datetime-local compatible strings
+      reset({ 
         name: "", email: "", avatarUrl: "", company: "", totalSpend: 0,
         lastContact: formatISO(new Date()).substring(0, 16),
         status: "New", acquisitionSource: "", tags: "",
@@ -265,6 +265,8 @@ export default function CustomersPage() {
           } else if (errorDetails.info) {
               description += `\nInfo: ${errorDetails.info}`;
           }
+      } else if (errorDetails) {
+        description += `\nDetails: ${String(errorDetails)}`;
       }
       toast({ title: "Error Adding Customer", description: description, variant: "destructive", duration: 8000 });
     },
@@ -273,7 +275,7 @@ export default function CustomersPage() {
   const onAddCustomerSubmit = (data: z.infer<typeof customerFormSchema>) => {
     const payload: CustomerCreationPayload = {
       ...data,
-      lastContact: new Date(data.lastContact).toISOString(), // Convert to full ISO string
+      lastContact: new Date(data.lastContact).toISOString(), 
       lastSeenOnline: data.lastSeenOnline ? new Date(data.lastSeenOnline).toISOString() : undefined,
       tags: data.tags || [], 
       avatarUrl: data.avatarUrl || `https://picsum.photos/seed/${encodeURIComponent(data.email)}/100/100`
@@ -319,7 +321,7 @@ export default function CustomersPage() {
             <Dialog open={isAddCustomerDialogOpen} onOpenChange={(isOpen) => {
                 setIsAddCustomerDialogOpen(isOpen);
                 if (!isOpen) {
-                    reset({ // Reset with current datetime-local compatible strings
+                    reset({ 
                         name: "", email: "", avatarUrl: "", company: "", totalSpend: 0,
                         lastContact: formatISO(new Date()).substring(0, 16),
                         status: "New", acquisitionSource: "", tags: "",
@@ -452,3 +454,5 @@ export default function CustomersPage() {
     </AppLayout>
   );
 }
+
+    
