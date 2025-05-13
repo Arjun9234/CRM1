@@ -32,30 +32,36 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 
 async function fetchCustomers(): Promise<Customer[]> {
+  console.log("fetchCustomers: Initiating fetch from /api/customers");
   const response = await fetch('/api/customers');
   if (!response.ok) {
     let errorMessage = `Failed to fetch customers (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+    const responseText = await response.text().catch(() => "Could not read error response body.");
+    console.error("fetchCustomers: Error response text:", responseText.substring(0, 500));
+
     if (response.status === 504) {
         errorMessage = `Failed to fetch customers: The server took too long to respond (Gateway Timeout). This might be a temporary issue.`;
     } else {
         try {
             const contentType = response.headers.get("content-type");
             if (contentType && contentType.includes("application/json")) {
-                const errorData = await response.json();
+                const errorData = JSON.parse(responseText); // Try parsing the logged text
                 errorMessage = errorData.message || errorData.error || errorMessage;
             } else {
-                const textError = await response.text();
-                errorMessage = `Server error while fetching customers: ${textError.substring(0, 100)}${textError.length > 100 ? '...' : ''}`;
-                console.error("Full non-JSON error from server (fetchCustomers):", textError);
+                errorMessage = `Server error while fetching customers: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`;
             }
         } catch (e) {
-            console.error("Error processing error response (fetchCustomers):", e);
+            console.error("Error processing/parsing error response (fetchCustomers):", e);
+            errorMessage = `Failed to parse error response. Server returned status ${response.status}. Response preview: ${responseText.substring(0,100)}`;
         }
     }
+    console.error("fetchCustomers: Throwing error:", errorMessage);
     throw new Error(errorMessage);
   }
   try {
-    return await response.json();
+    const data = await response.json();
+    console.log(`fetchCustomers: Successfully fetched ${data.length} customers.`);
+    return data;
   } catch (e) {
     console.error("Error parsing successful JSON response (fetchCustomers):", e);
     throw new Error("Failed to parse successful customer list from server.");
@@ -63,21 +69,26 @@ async function fetchCustomers(): Promise<Customer[]> {
 }
 
 async function createCustomer(payload: CustomerCreationPayload): Promise<Customer> {
+  console.log("createCustomer: Initiating POST to /api/customers with payload:", JSON.stringify(payload).substring(0,300) + "...");
   const response = await fetch('/api/customers', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
 
+  const responseText = await response.text().catch(() => `Could not read response body. Status: ${response.status}`);
+
   if (!response.ok) {
     let errorMessage = `Failed to create customer (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+    console.error("createCustomer: Error response text:", responseText.substring(0, 500));
+    
     if (response.status === 504) {
         errorMessage = `Failed to create customer: The server took too long to respond (Gateway Timeout). Please try again later.`;
     } else {
         try {
             const contentType = response.headers.get("content-type");
             if (contentType && contentType.includes("application/json")) {
-                const errorData = await response.json();
+                const errorData = JSON.parse(responseText);
                 errorMessage = errorData.message || errorData.error || errorMessage;
                 if (errorData.errors) {
                     const fieldErrors = Object.entries(errorData.errors)
@@ -85,45 +96,46 @@ async function createCustomer(payload: CustomerCreationPayload): Promise<Custome
                         .join('; ');
                     errorMessage = `Invalid data: ${fieldErrors || errorMessage}`;
                 }
-            } else {
-                const textError = await response.text();
-                errorMessage = `Server error while creating customer: ${textError.substring(0, 200)}${textError.length > 200 ? '...' : ''}`;
-                console.error("Full non-JSON error from server (createCustomer):", textError);
+            } else { // Non-JSON error response
+                errorMessage = `Server error while creating customer: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`;
             }
         } catch (e) {
             console.error("Error processing/parsing error response (createCustomer):", e);
+             errorMessage = `Failed to parse error response. Server returned status ${response.status}. Response preview: ${responseText.substring(0,100)}`;
         }
     }
+    console.error("createCustomer: Throwing error:", errorMessage);
     throw new Error(errorMessage);
   }
 
   try {
-    const result = await response.json();
+    const result = JSON.parse(responseText);
     if (!result.customer) {
         console.error("Successful response, but 'customer' field missing (createCustomer):", result);
         throw new Error("Customer creation response was successful, but data format is incorrect.");
     }
+    console.log("createCustomer: Successfully created customer:", result.customer.id);
     return result.customer;
   } catch (e) {
-    const responseBodyForDebug = await response.text().catch(() => "Could not read response body again.");
-    console.error("Error parsing successful JSON response (createCustomer):", e, "Body:", responseBodyForDebug);
+    console.error("Error parsing successful JSON response (createCustomer):", e, "Body:", responseText.substring(0,500));
     throw new Error("Failed to parse successful customer creation response from server.");
   }
 }
 
 const customerStatusOptions: CustomerStatus[] = ['Active', 'Lead', 'Inactive', 'New', 'Archived'];
 
+// Updated schema for form to use string for dates initially
 const customerFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email address"),
   avatarUrl: z.string().url("Invalid URL for avatar").optional().or(z.literal('')),
   company: z.string().optional(),
   totalSpend: z.coerce.number().min(0, "Total spend cannot be negative").default(0),
-  lastContact: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid last contact date"}),
+  lastContact: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid last contact date/time"}),
   status: z.enum(customerStatusOptions),
   acquisitionSource: z.string().optional(),
   tags: z.string().optional().transform(val => val ? val.split(',').map(tag => tag.trim()).filter(tag => tag) : []),
-  lastSeenOnline: z.string().optional().refine(val => val ? !isNaN(Date.parse(val)) : true, { message: "Invalid last seen online date" }),
+  lastSeenOnline: z.string().optional().refine(val => val ? !isNaN(Date.parse(val)) : true, { message: "Invalid last seen online date/time" }),
 });
 
 
@@ -158,8 +170,8 @@ const CustomerCard = ({ customer }: { customer: Customer }) => {
       <CardContent className="space-y-2 text-sm flex-grow">
         {customer.company && <p className="flex items-center"><Building className="h-4 w-4 mr-2 text-primary" />{customer.company}</p>}
         <p className="flex items-center"><DollarSign className="h-4 w-4 mr-2 text-green-500" />Total Spend: ₹{customer.totalSpend.toLocaleString()}</p>
-        <p className="flex items-center"><CalendarDays className="h-4 w-4 mr-2 text-primary" />Last Contact: {format(new Date(customer.lastContact), "PP")}</p>
-        {customer.lastSeenOnline && <p className="flex items-center"><Eye className="h-4 w-4 mr-2 text-primary" />Last Seen: {format(new Date(customer.lastSeenOnline), "PPp")}</p>}
+        <p className="flex items-center"><CalendarDays className="h-4 w-4 mr-2 text-primary" />Last Contact: {format(new Date(customer.lastContact), "PPp")}</p> {/* Changed to PPp */}
+        {customer.lastSeenOnline && <p className="flex items-center"><Eye className="h-4 w-4 mr-2 text-primary" />Last Seen: {format(new Date(customer.lastSeenOnline), "PPp")}</p>} {/* Changed to PPp */}
         {customer.acquisitionSource && <p className="flex items-center"><TrendingUp className="h-4 w-4 mr-2 text-primary" />Source: {customer.acquisitionSource}</p>}
         {customer.tags && customer.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 items-center pt-1">
@@ -196,11 +208,11 @@ export default function CustomersPage() {
       avatarUrl: "",
       company: "",
       totalSpend: 0,
-      lastContact: formatISO(new Date()).split('T')[0], 
+      lastContact: formatISO(new Date()), // Full ISO string for datetime-local
       status: "New",
       acquisitionSource: "",
       tags: "",
-      lastSeenOnline: formatISO(new Date()).split('T')[0], 
+      lastSeenOnline: formatISO(new Date()), // Full ISO string for datetime-local
     },
   });
 
@@ -218,13 +230,15 @@ export default function CustomersPage() {
   });
 
   const onAddCustomerSubmit = (data: z.infer<typeof customerFormSchema>) => {
+    // Data from form is already string (from datetime-local input), direct use for CustomerCreationPayload
     const payload: CustomerCreationPayload = {
       ...data,
-      tags: data.tags || [],
-      lastContact: new Date(data.lastContact).toISOString(),
-      lastSeenOnline: data.lastSeenOnline ? new Date(data.lastSeenOnline).toISOString() : undefined,
+      tags: data.tags || [], // Already transformed by Zod
+      // lastContact and lastSeenOnline are already full ISO strings from the form if type="datetime-local" is used
+      // and validated by Zod refine.
       avatarUrl: data.avatarUrl || `https://picsum.photos/seed/${encodeURIComponent(data.email)}/100/100`
     };
+    console.log("Submitting customer payload:", JSON.stringify(payload).substring(0,300) + "...");
     createCustomerMutation.mutate(payload);
   };
   
@@ -304,8 +318,8 @@ export default function CustomersPage() {
                     {formErrors.totalSpend && <p className="text-red-500 text-xs mt-1">{formErrors.totalSpend.message}</p>}
                   </div>
                    <div>
-                    <Label htmlFor="lastContact">Last Contact Date</Label>
-                    <Controller name="lastContact" control={control} render={({ field }) => <Input id="lastContact" type="date" {...field} />} />
+                    <Label htmlFor="lastContact">Last Contact Date & Time</Label>
+                    <Controller name="lastContact" control={control} render={({ field }) => <Input id="lastContact" type="datetime-local" {...field} />} />
                     {formErrors.lastContact && <p className="text-red-500 text-xs mt-1">{formErrors.lastContact.message}</p>}
                   </div>
                   <div>
@@ -332,7 +346,7 @@ export default function CustomersPage() {
                   </div>
                   <div>
                     <Label htmlFor="lastSeenOnline">Last Seen Online (Optional)</Label>
-                    <Controller name="lastSeenOnline" control={control} render={({ field }) => <Input id="lastSeenOnline" type="date" {...field} />} />
+                    <Controller name="lastSeenOnline" control={control} render={({ field }) => <Input id="lastSeenOnline" type="datetime-local" {...field} />} />
                     {formErrors.lastSeenOnline && <p className="text-red-500 text-xs mt-1">{formErrors.lastSeenOnline.message}</p>}
                   </div>
                   <DialogFooter className="mt-4">

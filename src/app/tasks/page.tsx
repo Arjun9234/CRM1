@@ -29,52 +29,90 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle, AlertDescription as UiAlertDescription } from "@/components/ui/alert"; 
 
 async function fetchTasks(): Promise<Task[]> {
+  console.log("fetchTasks: Initiating fetch from /api/tasks");
   const response = await fetch('/api/tasks');
   if (!response.ok) {
     let errorMessage = `Failed to fetch tasks (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+    const responseText = await response.text().catch(() => "Could not read error response body.");
+    console.error("fetchTasks: Error response text:", responseText.substring(0, 500));
+
     if (response.status === 504) {
         errorMessage = `Failed to fetch tasks: The server took too long to respond (Gateway Timeout). This might be a temporary issue.`;
     } else {
         try {
-            const errorData = await response.json();
-            errorMessage = errorData.message || 'Failed to fetch tasks';
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+                const errorData = JSON.parse(responseText);
+                errorMessage = errorData.message || 'Failed to fetch tasks';
+            } else {
+                 errorMessage = `Server error while fetching tasks: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`;
+            }
         } catch (e) {
-            // If parsing JSON fails, use the original generic message
+            console.error("Error processing/parsing error response (fetchTasks):", e);
+             errorMessage = `Failed to parse error response. Server returned status ${response.status}. Response preview: ${responseText.substring(0,100)}`;
         }
     }
+    console.error("fetchTasks: Throwing error:", errorMessage);
     throw new Error(errorMessage);
   }
-  return response.json();
+  const data = await response.json();
+  console.log(`fetchTasks: Successfully fetched ${data.length} tasks.`);
+  return data;
 }
 
 async function createTask(payload: TaskCreationPayload): Promise<Task> {
+    console.log("createTask: Initiating POST to /api/tasks with payload:", JSON.stringify(payload).substring(0,300) + "...");
     const response = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
     });
+    
+    const responseText = await response.text().catch(() => `Could not read response body. Status: ${response.status}`);
+
     if (!response.ok) {
         let errorMessage = `Failed to create task (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+        console.error("createTask: Error response text:", responseText.substring(0, 500));
+
         if (response.status === 504) {
             errorMessage = `Failed to create task: The server took too long to respond (Gateway Timeout). Please try again later.`;
         } else {
             try {
-                const errorData = await response.json();
-                errorMessage = errorData.message || 'Failed to create task';
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                    const errorData = JSON.parse(responseText);
+                    errorMessage = errorData.message || 'Failed to create task';
+                     if (errorData.errors) {
+                        const fieldErrors = Object.entries(errorData.errors)
+                            .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
+                            .join('; ');
+                        errorMessage = `Invalid data: ${fieldErrors || errorMessage}`;
+                    }
+                } else {
+                    errorMessage = `Server error while creating task: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`;
+                }
             } catch (e) {
-                // If parsing JSON fails, use the original generic message
+                console.error("Error processing/parsing error response (createTask):", e);
+                 errorMessage = `Failed to parse error response. Server returned status ${response.status}. Response preview: ${responseText.substring(0,100)}`;
             }
         }
+        console.error("createTask: Throwing error:", errorMessage);
         throw new Error(errorMessage);
     }
-    const result = await response.json();
+    const result = JSON.parse(responseText);
+    if (!result.task) {
+        console.error("Successful response, but 'task' field missing (createTask):", result);
+        throw new Error("Task creation response was successful, but data format is incorrect.");
+    }
+    console.log("createTask: Successfully created task:", result.task.id);
     return result.task;
 }
 
+// Updated schema for form to use string for dates initially
 const taskFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
-  dueDate: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date"}),
+  dueDate: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid due date/time"}),
   priority: z.enum(['High', 'Medium', 'Low']).default('Medium'),
   status: z.enum(['To Do', 'In Progress', 'Completed', 'Blocked', 'Archived']).default('To Do'),
   assignedTo: z.string().optional(),
@@ -115,7 +153,7 @@ const TaskCard = ({ task }: { task: Task }) => {
           </Badge>
         </div>
         <CardDescription className="flex items-center text-xs text-muted-foreground gap-1 pt-1">
-          <CalendarDays className="h-3 w-3" /> Due: {task.dueDate ? format(new Date(task.dueDate), "MMM dd, yyyy") : 'N/A'}
+          <CalendarDays className="h-3 w-3" /> Due: {task.dueDate ? format(new Date(task.dueDate), "MMM dd, yyyy p") : 'N/A'} {/* Changed to include time */}
           {isPastDue && <span className="text-red-500 font-semibold ml-1">(Past Due)</span>}
         </CardDescription>
       </CardHeader>
@@ -163,7 +201,7 @@ export default function TasksPage() {
     defaultValues: {
       title: "",
       description: "",
-      dueDate: formatISO(addDays(new Date(), 7)).split('T')[0], 
+      dueDate: formatISO(addDays(new Date(), 7)), // Full ISO string for datetime-local
       priority: "Medium",
       status: "To Do",
       assignedTo: "",
@@ -186,12 +224,13 @@ export default function TasksPage() {
   });
 
   const onAddTaskSubmit = (data: z.infer<typeof taskFormSchema>) => {
+    // data.dueDate is already a string from datetime-local input
     const payload: TaskCreationPayload = {
       ...data,
-      dueDate: formatISO(new Date(data.dueDate)), 
-      tags: data.tags || [],
+      tags: data.tags || [], // Already transformed by Zod
       project: data.project || undefined, 
     };
+    console.log("Submitting task payload:", JSON.stringify(payload).substring(0,300) + "...");
     createTaskMutation.mutate(payload);
   };
 
@@ -270,8 +309,8 @@ export default function TasksPage() {
                     <Controller name="description" control={control} render={({ field }) => <Textarea id="description" {...field} />} />
                   </div>
                   <div>
-                    <Label htmlFor="dueDate">Due Date</Label>
-                    <Controller name="dueDate" control={control} render={({ field }) => <Input id="dueDate" type="date" {...field} />} />
+                    <Label htmlFor="dueDate">Due Date & Time</Label>
+                    <Controller name="dueDate" control={control} render={({ field }) => <Input id="dueDate" type="datetime-local" {...field} />} />
                     {formErrors.dueDate && <p className="text-red-500 text-xs mt-1">{formErrors.dueDate.message}</p>}
                   </div>
                   <div>

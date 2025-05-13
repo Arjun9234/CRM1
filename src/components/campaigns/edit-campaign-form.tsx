@@ -27,6 +27,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 async function updateCampaign(campaignId: string, payload: CampaignUpdatePayload): Promise<Campaign> {
+  console.log(`updateCampaign: Initiating PUT to /api/campaigns/${campaignId} with payload:`, JSON.stringify(payload).substring(0,300) + "...");
   const response = await fetch(`/api/campaigns/${campaignId}`, {
     method: 'PUT',
     headers: {
@@ -35,19 +36,19 @@ async function updateCampaign(campaignId: string, payload: CampaignUpdatePayload
     body: JSON.stringify(payload),
   });
 
+  const responseText = await response.text().catch(() => `Could not read response body. Status: ${response.status}`);
+
   if (!response.ok) {
     let errorMessage = `Failed to update campaign (status: ${response.status} ${response.statusText || 'Unknown Status Text'})`;
-    let errorBodyText = ""; 
+    console.error("updateCampaign: Error response text:", responseText.substring(0, 500));
 
     if (response.status === 504) {
         errorMessage = `Failed to update campaign: The server took too long to respond (Gateway Timeout). Please try again later.`;
     } else {
         try {
-            errorBodyText = await response.text(); 
-
             const contentType = response.headers.get("content-type");
             if (contentType && contentType.includes("application/json")) {
-                const errorData = JSON.parse(errorBodyText); 
+                const errorData = JSON.parse(responseText); 
                 errorMessage = errorData.message || errorData.error || (typeof errorData === 'string' ? errorData : errorMessage);
                 if (errorData.errors) {
                 const errorDetails = Object.entries(errorData.errors)
@@ -55,41 +56,42 @@ async function updateCampaign(campaignId: string, payload: CampaignUpdatePayload
                     .join('; ');
                 errorMessage = `Invalid data: ${errorMessage}. Details: ${errorDetails}`;
                 }
-            } else if (errorBodyText.toLowerCase().includes("<html")) {
+            } else if (responseText.toLowerCase().includes("<html")) {
                 errorMessage = `Server returned an unexpected HTML error (status: ${response.status}). Please check server logs or network conditions.`;
-            } else if (errorBodyText) {
-                errorMessage = `Server error (status: ${response.status}): ${errorBodyText.substring(0, 200)}`;
+                 console.error("Full HTML error response from server (Update Campaign):", responseText.substring(0,1000));
+            } else if (responseText) {
+                errorMessage = `Server error (status: ${response.status}): ${responseText.substring(0, 200)}`;
             }
         } catch (e) {
-            console.warn("Error processing error response body during campaign update. Status:", response.status, e);
-            if (errorBodyText.toLowerCase().includes("<html")) {
+            console.warn("Error processing/parsing error response body during campaign update. Status:", response.status, e);
+            if (responseText.toLowerCase().includes("<html")) {
                 errorMessage = `Server returned an unparsable HTML error (status: ${response.status}).`;
-            } else if (errorBodyText) {
-                errorMessage = `Failed to parse error response (status: ${response.status}): ${errorBodyText.substring(0,100)}`;
+            } else if (responseText) {
+                errorMessage = `Failed to parse error response (status: ${response.status}): ${responseText.substring(0,100)}`;
             } else {
                 errorMessage = `Failed to update campaign (status: ${response.status} ${response.statusText}). Could not retrieve detailed error.`;
             }
         }
     }
     
-    console.error("Update campaign API error:", { 
-        status: response.status, 
-        statusText: response.statusText, 
-        message: errorMessage, 
-        bodyPreview: errorBodyText.substring(0, 500) 
-    });
+    console.error("--- Update Campaign API Error Details (Frontend) ---");
+    console.error("Status:", response.status);
+    console.error("StatusText:", response.statusText || "Unknown Status Text");
+    console.error("Final Error Message to be Thrown:", errorMessage);
+    console.error("--- End of Update Campaign Error Details (Frontend) ---");
     throw new Error(errorMessage);
   }
   
   try {
-    const result = await response.json();
+    const result = JSON.parse(responseText);
     if (!result || !result.id) {
         console.error("Campaign update response missing ID or data:", result);
         throw new Error("Campaign updated, but response data is invalid.");
     }
+    console.log(`updateCampaign: Successfully updated campaign ${campaignId}.`);
     return result;
   } catch (e) {
-    console.error("Server returned OK, but with non-JSON success response during update:", response.status, e);
+    console.error("Error parsing successful JSON response (updateCampaign):", e, "Body:", responseText.substring(0,500));
     throw new Error("Received an invalid success response format from the server after update.");
   }
 }
@@ -216,6 +218,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("EditCampaignForm handleSubmit: Form submitted.");
     if (!campaignName || !message) { 
       toast({
         title: "Missing Information",
@@ -243,6 +246,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
       audienceSize: audienceSize, 
     };
     
+    console.log("EditCampaignForm handleSubmit: Calling mutation.mutate with payload:", JSON.stringify(updatedCampaignPayload).substring(0,300) + "...");
     mutation.mutate(updatedCampaignPayload);
   };
 
