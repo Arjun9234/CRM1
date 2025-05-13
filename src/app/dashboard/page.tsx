@@ -15,42 +15,43 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from '@tanstack/react-query';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Terminal } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth"; // To get token for authenticated requests if needed
 
-async function fetchCampaigns(): Promise<Campaign[]> {
-  const response = await fetch('/api/campaigns', { cache: 'no-store' });
-  const responseBody = await response.text();
+const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`;
 
+async function fetchCampaigns(token: string | null): Promise<Campaign[]> {
+  // const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  // if (token) {
+  //   headers['x-auth-token'] = token;
+  // }
+  // For GET requests, token might not be needed if routes are public for now, or added later with middleware
+  const response = await fetch(`${API_BASE_URL}/campaigns`, { cache: 'no-store' /*, headers */ });
+  
   if (!response.ok) {
     let errorMessage = `Failed to fetch campaigns (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
-    if (response.status === 504) {
-        errorMessage = `Failed to fetch campaigns: The server took too long to respond (Gateway Timeout). This might be a temporary issue.`;
-    } else {
-        try {
-            const errorData = JSON.parse(responseBody);
+    try {
+        const errorBody = await response.text();
+        if (errorBody.toLowerCase().includes("<html")) {
+             errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs.`;
+        } else {
+            const errorData = JSON.parse(errorBody);
             errorMessage = errorData.message || `Failed to fetch campaigns (Status: ${response.status})`;
-        } catch (e) {
-            if (responseBody.toLowerCase().includes("firebase") && responseBody.toLowerCase().includes("error")) {
-                errorMessage = `Failed to fetch campaigns. Server returned a Firebase-related error (Status: ${response.status}). Please check Firebase configuration and API route logs. Response preview: ${responseBody.substring(0, 200)}...`;
-            } else {
-                errorMessage = `Failed to fetch campaigns. Server returned non-JSON error (Status: ${response.status}). Response preview: ${responseBody.substring(0, 200)}...`;
-            }
         }
+    } catch (e) {
+        // Failed to parse error body or it wasn't JSON
+         errorMessage = `Failed to fetch campaigns. Server returned non-JSON error (Status: ${response.status}).`;
     }
     throw new Error(errorMessage);
   }
-
-  try {
-    return JSON.parse(responseBody);
-  } catch (e) {
-    const preview = responseBody.substring(0, 500); 
-    throw new Error(`Successfully fetched campaigns (Status: ${response.status}), but failed to parse response as JSON. Response preview: ${preview}...`);
-  }
+  return response.json();
 }
 
 export default function DashboardPage() {
+  const { token } = useAuth(); // Assuming useAuth provides the token
   const { data: campaigns = [], isLoading, error, isFetching } = useQuery<Campaign[]>({
     queryKey: ['campaigns'],
-    queryFn: fetchCampaigns,
+    queryFn: () => fetchCampaigns(token),
+    // enabled: !!token, // Only fetch if token is available, if routes are protected
   });
 
   const sortedCampaigns = useMemo(() => {
@@ -110,7 +111,7 @@ export default function DashboardPage() {
             <AlertTitle>Error Fetching Campaigns</AlertTitle>
             <AlertDescription>
               {(error as Error).message || "An unexpected error occurred."}
-              <p className="text-xs mt-2">Please check your internet connection and ensure the backend services (including Firebase) are correctly configured and running. If the problem persists, contact support or check server logs.</p>
+              <p className="text-xs mt-2">Please check your internet connection and ensure the backend services are correctly configured and running. If the problem persists, contact support or check server logs.</p>
             </AlertDescription>
           </Alert>
         </div>

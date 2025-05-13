@@ -2,7 +2,7 @@
 "use client";
 
 import AppLayout from "@/components/layout/app-layout";
-import { CreateCampaignForm } from "@/components/campaigns/create-campaign-form"; 
+// import { CreateCampaignForm } from "@/components/campaigns/create-campaign-form"; // Not used here
 import { Separator } from "@/components/ui/separator";
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -12,36 +12,47 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EditCampaignForm } from "@/components/campaigns/edit-campaign-form";
+import { useAuth } from "@/hooks/use-auth";
 
-async function fetchCampaignForEdit(campaignId: string): Promise<Campaign> {
-  const response = await fetch(`/api/campaigns/${campaignId}`);
+const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`;
+
+async function fetchCampaignForEdit(campaignId: string, token: string | null): Promise<Campaign> {
+  // const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  // if (token) {
+  //   headers['x-auth-token'] = token;
+  // }
+  const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}` /*, { headers } */);
+  
   if (!response.ok) {
     let errorMessage = `Failed to fetch campaign ${campaignId} (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
-    if (response.status === 504) {
-        errorMessage = `Failed to fetch campaign for editing: The server took too long to respond (Gateway Timeout). This might be a temporary issue.`;
-    } else {
-        try {
-            const errorData = await response.json();
+     try {
+        const errorBody = await response.text();
+         if (errorBody.toLowerCase().includes("<html")) {
+             errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs.`;
+        } else {
+            const errorData = JSON.parse(errorBody);
             errorMessage = errorData.message || `Failed to fetch campaign ${campaignId}`;
-        } catch (e) {
-            // If parsing JSON fails, use the original generic message
         }
+    } catch (e) {
+        errorMessage = `Failed to fetch campaign ${campaignId}. Server returned non-JSON error (Status: ${response.status}).`;
     }
     throw new Error(errorMessage);
   }
-  return response.json();
+  const data = await response.json();
+  return { ...data, id: data._id }; // Map _id to id
 }
 
 
 export default function EditCampaignPage() {
   const params = useParams();
   const router = useRouter();
+  const { token } = useAuth();
   const campaignId = params.campaignId as string;
 
   const { data: campaign, isLoading, error, isError } = useQuery<Campaign>({
     queryKey: ['campaign', campaignId, 'edit'], 
-    queryFn: () => fetchCampaignForEdit(campaignId),
-    enabled: !!campaignId,
+    queryFn: () => fetchCampaignForEdit(campaignId, token),
+    enabled: !!campaignId, // && !!token, // Only fetch if campaignId and token are available
   });
 
 

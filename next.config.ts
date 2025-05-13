@@ -18,6 +18,22 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Make environment variables available on the client side
+  publicRuntimeConfig: {
+    NEXT_PUBLIC_SERVER_PORT: process.env.SERVER_PORT || 5000,
+  },
+  // If your Node.js server is on a different domain in production,
+  // you might need to configure rewrites or a proxy here for API calls,
+  // or ensure CORS is correctly set up on your Node.js server.
+  // Example rewrite (if Node.js server is on same host but different port/path in prod):
+  // async rewrites() {
+  //   return [
+  //     {
+  //       source: '/api/:path*',
+  //       destination: `http://localhost:${process.env.SERVER_PORT || 5000}/api/:path*`, // Proxy to Node.js server
+  //     },
+  //   ]
+  // },
 };
 
 export default nextConfig;

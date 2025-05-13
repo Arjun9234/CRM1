@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ListChecks, PlusCircle, CalendarDays, User, Tag, Flag, Loader2, AlertTriangle, FolderKanban } from "lucide-react";
 import type { Task, TaskStatus, TaskPriority, TaskCreationPayload } from "@/lib/types";
-import { format, formatISO, addDays } from "date-fns";
+import { format, formatISO, parseISO, addDays } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
@@ -27,11 +27,18 @@ import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle, AlertDescription as UiAlertDescription } from "@/components/ui/alert"; 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Added for consistency
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/hooks/use-auth";
 
-async function fetchTasks(): Promise<Task[]> {
+const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`;
+
+async function fetchTasks(token: string | null): Promise<Task[]> {
   console.log("fetchTasks (client): Initiating fetch from /api/tasks");
-  const response = await fetch('/api/tasks');
+  // const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  // if (token) {
+  //   headers['x-auth-token'] = token;
+  // }
+  const response = await fetch(`${API_BASE_URL}/tasks` /*, { headers } */);
   
   const responseText = await response.text();
 
@@ -40,7 +47,7 @@ async function fetchTasks(): Promise<Task[]> {
     let errorDetails: any = null;
     console.error("fetchTasks (client): Error response text (first 500 chars):", responseText.substring(0, 500));
 
-    if (response.status === 504) { // Gateway Timeout
+    if (response.status === 504) { 
         errorMessage = `Failed to fetch tasks: The server took too long to respond (Gateway Timeout). This might be a temporary issue.`;
     } else {
         try {
@@ -65,18 +72,24 @@ async function fetchTasks(): Promise<Task[]> {
   try {
     const data = JSON.parse(responseText);
     console.log(`fetchTasks (client): Successfully fetched ${data.length} tasks.`);
-    return data;
+    return data.map((t: any) => ({ ...t, id: t._id })); // Map _id to id
   } catch (e) {
     console.error("Error parsing successful JSON response (fetchTasks):", e, "Body:", responseText.substring(0,500));
     throw new Error("Failed to parse successful task list from server.");
   }
 }
 
-async function createTask(payload: TaskCreationPayload): Promise<{task: Task}> {
+async function createTask(payload: TaskCreationPayload, token: string | null): Promise<{task: Task}> {
     console.log("createTask (client): Initiating POST to /api/tasks with payload (first 300 chars):", JSON.stringify(payload).substring(0,300) + "...");
-    const response = await fetch('/api/tasks', {
+    
+    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+    // if (token) {
+    //   headers['x-auth-token'] = token;
+    // }
+
+    const response = await fetch(`${API_BASE_URL}/tasks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify(payload),
     });
     
@@ -104,8 +117,8 @@ async function createTask(payload: TaskCreationPayload): Promise<{task: Task}> {
             } catch (e) {
                 console.error("Error processing/parsing error response (createTask):", e);
                  errorMessage = `Failed to parse error response. Server returned status ${response.status}. Response preview: ${responseText.substring(0,100)}`;
-            }
         }
+    }
         console.error("createTask (client): Throwing error:", errorMessage, "Details:", errorDetails);
         const err = new Error(errorMessage);
         (err as any).details = errorDetails;
@@ -113,12 +126,12 @@ async function createTask(payload: TaskCreationPayload): Promise<{task: Task}> {
     }
     try {
         const result = JSON.parse(responseText);
-        if (!result.task || !result.task.id) {
-            console.error("Successful response, but 'task' or 'task.id' field missing (createTask):", result);
+        if (!result.task || !result.task._id) {
+            console.error("Successful response, but 'task' or 'task._id' field missing (createTask):", result);
             throw new Error("Task creation response was successful, but data format is incorrect.");
         }
-        console.log("createTask (client): Successfully created task:", result.task.id);
-        return result; // Return the whole object { message: '...', task: ... }
+        console.log("createTask (client): Successfully created task:", result.task._id);
+        return { ...result, task: { ...result.task, id: result.task._id }};
     } catch (e: any) {
         console.error("Error parsing successful JSON response (createTask):", e.message, "Body:", responseText.substring(0,500));
         throw new Error("Failed to parse successful task creation response from server.");
@@ -129,7 +142,9 @@ async function createTask(payload: TaskCreationPayload): Promise<{task: Task}> {
 const taskFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
-  dueDate: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid due date/time"}),
+  dueDate: z.string().refine((val) => {
+    try { return !!formatISO(parseISO(val)) } catch { return false }
+  }, { message: "Invalid due date/time"}),
   priority: z.enum(['High', 'Medium', 'Low']).default('Medium'),
   status: z.enum(['To Do', 'In Progress', 'Completed', 'Blocked', 'Archived']).default('To Do'),
   assignedTo: z.string().optional(),
@@ -138,7 +153,7 @@ const taskFormSchema = z.object({
 });
 
 
-const priorityVariantMap: Record<TaskPriority, "default" | "secondary" | "destructive" | "outline"> = { // Added outline
+const priorityVariantMap: Record<TaskPriority, "default" | "secondary" | "destructive" | "outline"> = {
     High: "destructive",
     Medium: "default", 
     Low: "secondary",
@@ -159,21 +174,21 @@ const statusColorMap: Record<TaskStatus, string> = {
 };
 
 const TaskCard = ({ task }: { task: Task }) => {
-  const isPastDue = new Date(task.dueDate) < new Date() && task.status !== "Completed";
+  const isPastDue = task.dueDate ? new Date(task.dueDate) < new Date() && task.status !== "Completed" : false;
   return (
     <Card className="shadow-md hover:shadow-lg transition-shadow flex flex-col">
       <CardHeader>
         <div className="flex justify-between items-start">
           <CardTitle className="text-lg">{task.title}</CardTitle>
           <Badge 
-            variant={priorityVariantMap[task.priority] === 'destructive' ? 'destructive' : 'outline'} // Ensure destructive uses its variant, others outline
+            variant={priorityVariantMap[task.priority] === 'destructive' ? 'destructive' : 'outline'} 
             className={priorityBadgeClassMap[task.priority]}
           >
              <Flag className="mr-1 h-3 w-3" /> {task.priority}
           </Badge>
         </div>
         <CardDescription className="flex items-center text-xs text-muted-foreground gap-1 pt-1">
-          <CalendarDays className="h-3 w-3" /> Due: {task.dueDate ? format(new Date(task.dueDate), "MMM dd, yyyy p") : 'N/A'}
+          <CalendarDays className="h-3 w-3" /> Due: {task.dueDate ? format(parseISO(task.dueDate), "MMM dd, yyyy p") : 'N/A'}
           {isPastDue && <span className="text-red-500 font-semibold ml-1">(Past Due)</span>}
         </CardDescription>
       </CardHeader>
@@ -209,11 +224,13 @@ const TaskCard = ({ task }: { task: Task }) => {
 export default function TasksPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { token } = useAuth();
   const [isAddTaskDialogOpen, setIsAddTaskDialogOpen] = useState(false);
 
-  const { data: tasks = [], isLoading, error, isFetching } = useQuery<Task[]>({ // Added isFetching
+  const { data: tasks = [], isLoading, error, isFetching } = useQuery<Task[]>({
     queryKey: ['tasks'],
-    queryFn: fetchTasks,
+    queryFn: () => fetchTasks(token),
+    // enabled: !!token, // if auth is required
   });
 
   const { control, handleSubmit, reset, formState: { errors: formErrors } } = useForm<z.infer<typeof taskFormSchema>>({
@@ -221,7 +238,7 @@ export default function TasksPage() {
     defaultValues: {
       title: "",
       description: "",
-      dueDate: formatISO(addDays(new Date(), 7)), 
+      dueDate: formatISO(addDays(new Date(), 7)).substring(0,16), // Format for datetime-local
       priority: "Medium",
       status: "To Do",
       assignedTo: "",
@@ -231,12 +248,17 @@ export default function TasksPage() {
   });
 
   const createTaskMutation = useMutation({
-    mutationFn: createTask,
-    onSuccess: (data) => { // data is now { message: string, task: Task }
+    mutationFn: (payload: TaskCreationPayload) => createTask(payload, token),
+    onSuccess: (data) => { 
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       toast({ title: "Task Added", description: data.message || `Task "${data.task.title}" has been successfully added.` });
       setIsAddTaskDialogOpen(false);
-      reset();
+      reset({ // Reset with current datetime-local compatible strings
+        title: "", description: "",
+        dueDate: formatISO(addDays(new Date(), 7)).substring(0,16),
+        priority: "Medium", status: "To Do",
+        assignedTo: "", project: "", tags: ""
+      });
     },
     onError: (error: Error) => {
       const errorDetails = (error as any).details;
@@ -258,10 +280,10 @@ export default function TasksPage() {
   const onAddTaskSubmit = (data: z.infer<typeof taskFormSchema>) => {
     const payload: TaskCreationPayload = {
       ...data,
+      dueDate: new Date(data.dueDate).toISOString(), // Convert to full ISO string
       tags: data.tags || [], 
       project: data.project || undefined, 
     };
-    console.log("Submitting task payload:", JSON.stringify(payload).substring(0,300) + "...");
     createTaskMutation.mutate(payload);
   };
 
@@ -315,7 +337,17 @@ export default function TasksPage() {
       <div className="space-y-6">
          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Task Manager</h1>
-            <Dialog open={isAddTaskDialogOpen} onOpenChange={setIsAddTaskDialogOpen}>
+            <Dialog open={isAddTaskDialogOpen} onOpenChange={(isOpen) => {
+                setIsAddTaskDialogOpen(isOpen);
+                if (!isOpen) {
+                    reset({ // Reset with current datetime-local compatible strings
+                        title: "", description: "",
+                        dueDate: formatISO(addDays(new Date(), 7)).substring(0,16),
+                        priority: "Medium", status: "To Do",
+                        assignedTo: "", project: "", tags: ""
+                    });
+                }
+            }}>
               <DialogTrigger asChild>
                 <Button className="w-full sm:w-auto">
                   <PlusCircle className="mr-2 h-5 w-5" />
@@ -342,7 +374,11 @@ export default function TasksPage() {
                   </div>
                   <div>
                     <Label htmlFor="dueDate">Due Date & Time</Label>
-                    <Controller name="dueDate" control={control} render={({ field }) => <Input id="dueDate" type="datetime-local" {...field} />} />
+                    <Controller 
+                      name="dueDate" 
+                      control={control} 
+                      render={({ field }) => <Input id="dueDate" type="datetime-local" {...field} />} 
+                    />
                     {formErrors.dueDate && <p className="text-red-500 text-xs mt-1">{formErrors.dueDate.message}</p>}
                   </div>
                   <div>

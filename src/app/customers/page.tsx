@@ -5,9 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, User, Mail, Building, DollarSign, CalendarDays, Tag, AlertTriangle, Users, Briefcase, TrendingUp, Eye, Loader2 as FormLoader } from "lucide-react"; // Renamed Loader2
+import { PlusCircle, User, Mail, Building, DollarSign, CalendarDays, Tag, AlertTriangle, Users, Briefcase, TrendingUp, Eye, Loader2 as FormLoader } from "lucide-react";
 import type { Customer, CustomerStatus, CustomerCreationPayload } from "@/lib/types";
-import { format, formatISO, subDays, addDays } from "date-fns";
+import { format, formatISO, parseISO } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import {
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea"; // Added for consistency, though not used in this form yet
+// import { Textarea } from "@/components/ui/textarea"; // Not used in this form currently
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -29,11 +29,17 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle, AlertDescription as UiAlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/hooks/use-auth";
 
+const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`;
 
-async function fetchCustomers(): Promise<Customer[]> {
+async function fetchCustomers(token: string | null): Promise<Customer[]> {
   console.log("fetchCustomers (client): Initiating fetch from /api/customers");
-  const response = await fetch('/api/customers');
+  // const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  // if (token) {
+  //   headers['x-auth-token'] = token;
+  // }
+  const response = await fetch(`${API_BASE_URL}/customers` /*, { headers } */);
   
   const responseText = await response.text();
 
@@ -51,7 +57,7 @@ async function fetchCustomers(): Promise<Customer[]> {
                 const errorData = JSON.parse(responseText);
                 errorMessage = errorData.message || errorData.error || errorMessage;
                 errorDetails = errorData.errors || errorData.details || errorData;
-            } else { // Non-JSON error response
+            } else { 
                  errorMessage = `Server error while fetching customers: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`;
             }
         } catch (e) {
@@ -67,18 +73,24 @@ async function fetchCustomers(): Promise<Customer[]> {
   try {
     const data = JSON.parse(responseText);
     console.log(`fetchCustomers (client): Successfully fetched ${data.length} customers.`);
-    return data;
+    return data.map((c: any) => ({ ...c, id: c._id })); // Map _id to id
   } catch (e) {
     console.error("Error parsing successful JSON response (fetchCustomers):", e, "Body:", responseText.substring(0,500));
     throw new Error("Failed to parse successful customer list from server.");
   }
 }
 
-async function createCustomer(payload: CustomerCreationPayload): Promise<{customer: Customer}> {
+async function createCustomer(payload: CustomerCreationPayload, token: string | null): Promise<{customer: Customer}> {
   console.log("createCustomer (client): Initiating POST to /api/customers with payload (first 300 chars):", JSON.stringify(payload).substring(0,300) + "...");
-  const response = await fetch('/api/customers', {
+  
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  // if (token) {
+  //   headers['x-auth-token'] = token;
+  }
+  
+  const response = await fetch(`${API_BASE_URL}/customers`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: headers,
     body: JSON.stringify(payload),
   });
 
@@ -110,18 +122,18 @@ async function createCustomer(payload: CustomerCreationPayload): Promise<{custom
     }
     console.error("createCustomer (client): Throwing error:", errorMessage, "Details:", errorDetails);
     const err = new Error(errorMessage);
-    (err as any).details = errorDetails; // Attach details to error
+    (err as any).details = errorDetails;
     throw err;
   }
 
   try {
     const result = JSON.parse(responseText);
-    if (!result.customer || !result.customer.id) { // Check for customer object and its id
-        console.error("Successful response, but 'customer' field or 'customer.id' missing (createCustomer):", result);
+    if (!result.customer || !result.customer._id) { 
+        console.error("Successful response, but 'customer' field or 'customer._id' missing (createCustomer):", result);
         throw new Error("Customer creation response was successful, but data format is incorrect.");
     }
-    console.log("createCustomer (client): Successfully created customer:", result.customer.id);
-    return result; // Return the whole object { message: '...', customer: ... }
+    console.log("createCustomer (client): Successfully created customer:", result.customer._id);
+    return { ...result, customer: { ...result.customer, id: result.customer._id }};
   } catch (e: any) {
     console.error("Error parsing successful JSON response (createCustomer):", e.message, "Body:", responseText.substring(0,500));
     throw new Error("Failed to parse successful customer creation response from server.");
@@ -137,11 +149,16 @@ const customerFormSchema = z.object({
   avatarUrl: z.string().url("Invalid URL for avatar").optional().or(z.literal('')),
   company: z.string().optional(),
   totalSpend: z.coerce.number().min(0, "Total spend cannot be negative").default(0),
-  lastContact: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid last contact date/time"}),
+  lastContact: z.string().refine((val) => {
+    try { return !!formatISO(parseISO(val)) } catch { return false }
+  }, { message: "Invalid last contact date/time"}),
   status: z.enum(customerStatusOptions),
   acquisitionSource: z.string().optional(),
   tags: z.string().optional().transform(val => val ? val.split(',').map(tag => tag.trim()).filter(tag => tag) : []),
-  lastSeenOnline: z.string().optional().refine(val => val ? !isNaN(Date.parse(val)) : true, { message: "Invalid last seen online date/time" }),
+  lastSeenOnline: z.string().optional().refine(val => {
+    if (!val) return true;
+    try { return !!formatISO(parseISO(val)) } catch { return false }
+  }, { message: "Invalid last seen online date/time" }),
 });
 
 
@@ -176,8 +193,8 @@ const CustomerCard = ({ customer }: { customer: Customer }) => {
       <CardContent className="space-y-2 text-sm flex-grow">
         {customer.company && <p className="flex items-center"><Building className="h-4 w-4 mr-2 text-primary" />{customer.company}</p>}
         <p className="flex items-center"><DollarSign className="h-4 w-4 mr-2 text-green-500" />Total Spend: ₹{customer.totalSpend.toLocaleString()}</p>
-        <p className="flex items-center"><CalendarDays className="h-4 w-4 mr-2 text-primary" />Last Contact: {format(new Date(customer.lastContact), "PPp")}</p>
-        {customer.lastSeenOnline && <p className="flex items-center"><Eye className="h-4 w-4 mr-2 text-primary" />Last Seen: {format(new Date(customer.lastSeenOnline), "PPp")}</p>}
+        <p className="flex items-center"><CalendarDays className="h-4 w-4 mr-2 text-primary" />Last Contact: {customer.lastContact ? format(parseISO(customer.lastContact), "PPp") : 'N/A'}</p>
+        {customer.lastSeenOnline && <p className="flex items-center"><Eye className="h-4 w-4 mr-2 text-primary" />Last Seen: {format(parseISO(customer.lastSeenOnline), "PPp")}</p>}
         {customer.acquisitionSource && <p className="flex items-center"><TrendingUp className="h-4 w-4 mr-2 text-primary" />Source: {customer.acquisitionSource}</p>}
         {customer.tags && customer.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 items-center pt-1">
@@ -198,11 +215,13 @@ const CustomerCard = ({ customer }: { customer: Customer }) => {
 export default function CustomersPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { token } = useAuth();
   const [isAddCustomerDialogOpen, setIsAddCustomerDialogOpen] = useState(false);
 
-  const { data: customers = [], isLoading, error, isFetching } = useQuery<Customer[]>({ // Added isFetching
+  const { data: customers = [], isLoading, error, isFetching } = useQuery<Customer[]>({
     queryKey: ['customers'],
-    queryFn: fetchCustomers,
+    queryFn: () => fetchCustomers(token),
+    // enabled: !!token, // If auth is required
   });
 
   const { control, handleSubmit, reset, formState: { errors: formErrors } } = useForm<z.infer<typeof customerFormSchema>>({
@@ -213,27 +232,31 @@ export default function CustomersPage() {
       avatarUrl: "",
       company: "",
       totalSpend: 0,
-      lastContact: formatISO(new Date()), 
+      lastContact: formatISO(new Date()).substring(0, 16), // Format for datetime-local
       status: "New",
       acquisitionSource: "",
       tags: "",
-      lastSeenOnline: formatISO(new Date()), 
+      lastSeenOnline: formatISO(new Date()).substring(0, 16), // Format for datetime-local
     },
   });
 
   const createCustomerMutation = useMutation({
-    mutationFn: createCustomer,
-    onSuccess: (data) => { // data is now { message: string, customer: Customer }
+    mutationFn: (payload: CustomerCreationPayload) => createCustomer(payload, token),
+    onSuccess: (data) => { 
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       toast({ title: "Customer Added", description: data.message || `Customer "${data.customer.name}" has been successfully added.` });
       setIsAddCustomerDialogOpen(false);
-      reset();
+      reset({ // Reset with current datetime-local compatible strings
+        name: "", email: "", avatarUrl: "", company: "", totalSpend: 0,
+        lastContact: formatISO(new Date()).substring(0, 16),
+        status: "New", acquisitionSource: "", tags: "",
+        lastSeenOnline: formatISO(new Date()).substring(0, 16),
+      });
     },
     onError: (error: Error) => {
       const errorDetails = (error as any).details;
       let description = error.message;
       if (errorDetails && typeof errorDetails === 'object') {
-          // Check for Zod-like error structure
           const validationErrors = Object.entries(errorDetails.validationErrors || errorDetails.errors || {})
                                       .map(([field, msg]) => `${field}: ${Array.isArray(msg) ? msg.join(', ') : msg}`)
                                       .join('\n');
@@ -250,10 +273,11 @@ export default function CustomersPage() {
   const onAddCustomerSubmit = (data: z.infer<typeof customerFormSchema>) => {
     const payload: CustomerCreationPayload = {
       ...data,
+      lastContact: new Date(data.lastContact).toISOString(), // Convert to full ISO string
+      lastSeenOnline: data.lastSeenOnline ? new Date(data.lastSeenOnline).toISOString() : undefined,
       tags: data.tags || [], 
       avatarUrl: data.avatarUrl || `https://picsum.photos/seed/${encodeURIComponent(data.email)}/100/100`
     };
-    console.log("Submitting customer payload:", JSON.stringify(payload).substring(0,300) + "...");
     createCustomerMutation.mutate(payload);
   };
   
@@ -275,7 +299,7 @@ export default function CustomersPage() {
     )
   }
 
-  if (error && !isFetching) { // Show error only if not currently fetching (e.g. on initial load error)
+  if (error && !isFetching) { 
      return (
       <AppLayout>
         <Alert variant="destructive">
@@ -292,7 +316,17 @@ export default function CustomersPage() {
       <div className="space-y-6">
          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
            <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center"><Users className="mr-3 h-8 w-8 text-primary"/>Customer Management</h1>
-            <Dialog open={isAddCustomerDialogOpen} onOpenChange={setIsAddCustomerDialogOpen}>
+            <Dialog open={isAddCustomerDialogOpen} onOpenChange={(isOpen) => {
+                setIsAddCustomerDialogOpen(isOpen);
+                if (!isOpen) {
+                    reset({ // Reset with current datetime-local compatible strings
+                        name: "", email: "", avatarUrl: "", company: "", totalSpend: 0,
+                        lastContact: formatISO(new Date()).substring(0, 16),
+                        status: "New", acquisitionSource: "", tags: "",
+                        lastSeenOnline: formatISO(new Date()).substring(0, 16),
+                    });
+                }
+            }}>
               <DialogTrigger asChild>
                 <Button className="w-full sm:w-auto">
                   <PlusCircle className="mr-2 h-5 w-5" />
@@ -333,7 +367,11 @@ export default function CustomersPage() {
                   </div>
                    <div>
                     <Label htmlFor="lastContact">Last Contact Date & Time</Label>
-                    <Controller name="lastContact" control={control} render={({ field }) => <Input id="lastContact" type="datetime-local" {...field} />} />
+                    <Controller 
+                      name="lastContact" 
+                      control={control} 
+                      render={({ field }) => <Input id="lastContact" type="datetime-local" {...field} />} 
+                    />
                     {formErrors.lastContact && <p className="text-red-500 text-xs mt-1">{formErrors.lastContact.message}</p>}
                   </div>
                   <div>
@@ -361,7 +399,11 @@ export default function CustomersPage() {
                   </div>
                   <div>
                     <Label htmlFor="lastSeenOnline">Last Seen Online (Optional)</Label>
-                    <Controller name="lastSeenOnline" control={control} render={({ field }) => <Input id="lastSeenOnline" type="datetime-local" {...field} />} />
+                    <Controller 
+                      name="lastSeenOnline" 
+                      control={control} 
+                      render={({ field }) => <Input id="lastSeenOnline" type="datetime-local" {...field} />} 
+                    />
                     {formErrors.lastSeenOnline && <p className="text-red-500 text-xs mt-1">{formErrors.lastSeenOnline.message}</p>}
                   </div>
                   <DialogFooter className="mt-4">

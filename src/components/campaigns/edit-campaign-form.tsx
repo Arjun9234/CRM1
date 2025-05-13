@@ -25,36 +25,48 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from "@/hooks/use-auth";
 
-async function updateCampaign(campaignId: string, payload: CampaignUpdatePayload): Promise<Campaign> {
+const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`;
+
+async function updateCampaign(campaignId: string, payload: CampaignUpdatePayload, token: string | null): Promise<Campaign> {
   console.log(`updateCampaign (client): Initiating PUT to /api/campaigns/${campaignId} with payload (first 300 chars):`, JSON.stringify(payload).substring(0,300) + "...");
-  const response = await fetch(`/api/campaigns/${campaignId}`, {
+  
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  // if (token) {
+  //   headers['x-auth-token'] = token;
+  // }
+  
+  const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: headers,
     body: JSON.stringify(payload),
   });
 
-  const errorBodyText = await response.text();
+  const responseBodyText = await response.text();
 
   if (!response.ok) {
     let errorMessage = `Failed to update campaign (status: ${response.status} ${response.statusText || 'Unknown Status Text'})`;
     let errorDetails: any = null;
+    let isHtmlError = false;
 
     try {
-      const errorData = JSON.parse(errorBodyText);
-      errorMessage = errorData.message || errorData.error || errorMessage;
-      errorDetails = errorData.errors || errorData.details || errorData;
-      if (errorDetails && typeof errorDetails !== 'object') errorDetails = { info: errorDetails };
-    } catch (e) {
-      console.warn(`updateCampaign (client): API error response for campaign ${campaignId} was not JSON. Status:`, response.status);
-      if (errorBodyText.toLowerCase().includes("<html")) {
-        errorMessage = `Server returned an unexpected HTML error (status: ${response.status}). Please check server logs.`;
-        console.error(`Full HTML error response from server (Update Campaign ${campaignId}):`, errorBodyText.substring(0,1000));
-      } else if (errorBodyText) {
-        errorMessage = `Server error (status: ${response.status}): ${errorBodyText.substring(0, 200)}`;
+      if (responseBodyText.trim().startsWith("<html")) {
+         isHtmlError = true;
+      } else {
+        const errorData = JSON.parse(responseBodyText);
+        errorMessage = errorData.message || errorData.error || errorMessage;
+        errorDetails = errorData.errors || errorData.details || errorData;
+        if (errorDetails && typeof errorDetails !== 'object') errorDetails = { info: errorDetails };
       }
+    } catch (e) {
+      console.warn(`updateCampaign (client): API error response for campaign ${campaignId} was not JSON and not HTML. Status:`, response.status, "Body preview:", responseBodyText.substring(0,100));
+      errorMessage = `Server error (status: ${response.status}): ${responseBodyText.substring(0, 200)}`;
+    }
+
+    if (isHtmlError) {
+        errorMessage = `Server returned an unexpected HTML error (status: ${response.status}). Please check server logs.`;
+        console.error(`Full HTML error response from server (Update Campaign ${campaignId}):`, responseBodyText.substring(0,1000));
     }
     
     console.error(`Update campaign API error (client) for ${campaignId}:`, { 
@@ -62,7 +74,7 @@ async function updateCampaign(campaignId: string, payload: CampaignUpdatePayload
         statusText: response.statusText, 
         message: errorMessage, 
         details: errorDetails,
-        rawErrorBodyPreview: errorBodyText.substring(0, 200)
+        rawErrorBodyPreview: responseBodyText.substring(0, 200)
     });
     const err = new Error(errorMessage);
     (err as any).details = errorDetails;
@@ -70,15 +82,15 @@ async function updateCampaign(campaignId: string, payload: CampaignUpdatePayload
   }
   
   try {
-    const result = JSON.parse(errorBodyText);
-    if (!result || !result.id) {
+    const result = JSON.parse(responseBodyText);
+    if (!result || !result._id) {
         console.error(`updateCampaign (client): Campaign ${campaignId} update response missing ID or data:`, result);
         throw new Error("Campaign updated, but response data is invalid.");
     }
     console.log(`updateCampaign (client): Successfully updated campaign ${campaignId}.`);
-    return result;
+    return { ...result, id: result._id }; // Map _id to id
   } catch (e: any) {
-    console.error(`updateCampaign (client): Error parsing successful JSON response for campaign ${campaignId}:`, e.message, "Body:", errorBodyText.substring(0,500));
+    console.error(`updateCampaign (client): Error parsing successful JSON response for campaign ${campaignId}:`, e.message, "Body:", responseBodyText.substring(0,500));
     throw new Error("Received an invalid success response format from the server after update.");
   }
 }
@@ -118,6 +130,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
   const router = useRouter();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { token } = useAuth();
 
   useEffect(() => {
     setCampaignName(existingCampaign.name);
@@ -131,7 +144,7 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
 
 
   const mutation = useMutation({
-    mutationFn: (payload: CampaignUpdatePayload) => updateCampaign(existingCampaign.id, payload),
+    mutationFn: (payload: CampaignUpdatePayload) => updateCampaign(existingCampaign.id, payload, token),
     onSuccess: (data: Campaign) => { 
       toast({
         title: "Campaign Updated!",
@@ -215,7 +228,6 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("EditCampaignForm handleSubmit: Form submitted.");
     if (!campaignName || !message) { 
       toast({
         title: "Missing Information",
@@ -243,7 +255,6 @@ export function EditCampaignForm({ existingCampaign }: EditCampaignFormProps) {
       audienceSize: audienceSize, 
     };
     
-    console.log("EditCampaignForm handleSubmit: Calling mutation.mutate with payload:", JSON.stringify(updatedCampaignPayload).substring(0,300) + "...");
     mutation.mutate(updatedCampaignPayload);
   };
 

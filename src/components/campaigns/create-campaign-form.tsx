@@ -25,63 +25,74 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from "@/hooks/use-auth";
 
-async function createCampaign(payload: CampaignCreationPayload): Promise<Campaign> {
+const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`;
+
+async function createCampaign(payload: CampaignCreationPayload, token: string | null): Promise<Campaign> {
   console.log("createCampaign (client): Initiating POST to /api/campaigns with payload (first 300 chars):", JSON.stringify(payload).substring(0,300) + "...");
-  const response = await fetch('/api/campaigns', {
+  
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  // if (token) { // Add token if routes become protected
+  //   headers['x-auth-token'] = token;
+  // }
+
+  const response = await fetch(`${API_BASE_URL}/campaigns`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: headers,
     body: JSON.stringify(payload),
   });
 
-  const errorBodyText = await response.text(); // Read body once for error handling
+  const responseBodyText = await response.text(); 
 
   if (!response.ok) {
     let errorMessage = `Failed to create campaign (status: ${response.status} ${response.statusText || 'Unknown Status Text'})`;
     let errorDetails: any = null;
+    let isHtmlError = false;
 
     try {
-      const errorData = JSON.parse(errorBodyText);
-      errorMessage = errorData.message || errorData.error || errorMessage;
-      errorDetails = errorData.errors || errorData.details || errorData; // Store more details if available
-      if (errorDetails && typeof errorDetails !== 'object') errorDetails = { info: errorDetails }; // Ensure details is an object
-    } catch (e) {
-      // Error body was not JSON (e.g., HTML error page from server/proxy)
-      console.warn("createCampaign (client): API error response was not JSON. Status:", response.status);
-      if (errorBodyText.toLowerCase().includes("<html")) {
-        errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs.`;
-        console.error("Full HTML error response from server (Create Campaign):", errorBodyText.substring(0, 1000)); // Log a snippet
-      } else if (errorBodyText) {
-        errorMessage = `Server error (status: ${response.status}). Response: ${errorBodyText.substring(0, 200)}`;
+      if (responseBodyText.trim().startsWith("<html")) {
+        isHtmlError = true;
+      } else {
+        const errorData = JSON.parse(responseBodyText);
+        errorMessage = errorData.message || errorData.error || errorMessage;
+        errorDetails = errorData.errors || errorData.details || errorData; 
+        if (errorDetails && typeof errorDetails !== 'object') errorDetails = { info: errorDetails }; 
       }
-      // No specific JSON details in this case
+    } catch (e) {
+        // This catch is for when JSON.parse fails on a non-HTML error body
+        console.warn("createCampaign (client): API error response was not JSON and not HTML. Status:", response.status, "Body preview:", responseBodyText.substring(0,100));
+        errorMessage = `Server error (status: ${response.status}). Response: ${responseBodyText.substring(0, 200)}`;
     }
     
-    console.error("Create campaign API error (client):", { 
-        status: response.status, 
-        statusText: response.statusText, 
-        message: errorMessage, 
-        details: errorDetails, // Log parsed/raw details
-        rawErrorBodyPreview: errorBodyText.substring(0, 200) // Always log a preview of raw body on error
-    });
+    if (isHtmlError) {
+        errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs.`;
+        console.error("Full HTML error response from server (Create Campaign):", responseBodyText.substring(0, 1000)); // Log a snippet
+    }
+    
+    console.error("--- Create Campaign API Error Details (Frontend) ---");
+    console.error("Status:", response.status);
+    console.error("StatusText:", response.statusText || 'Unknown Status Text');
+    console.error("Parsed Error Message:", errorMessage);
+    if (errorDetails) console.error("Parsed Error Details:", errorDetails);
+    console.error("Raw Response Body Preview (first 200 chars):", responseBodyText.substring(0,200));
+    console.error("--- End of Create Campaign Error Details (Frontend) ---");
+
     const err = new Error(errorMessage);
-    (err as any).details = errorDetails; // Attach details to error object
+    (err as any).details = errorDetails; 
     throw err;
   }
 
   try {
-    // If response.ok, errorBodyText actually contains the success response body
-    const result = JSON.parse(errorBodyText); 
-     if (!result || !result.id) { 
+    const result = JSON.parse(responseBodyText); 
+     if (!result || !result._id) { // MongoDB uses _id
         console.error("createCampaign (client): Campaign creation success response missing ID or data:", result);
         throw new Error("Campaign created, but response data is invalid.");
     }
-    console.log("createCampaign (client): Successfully created campaign:", result.id);
-    return result;
+    console.log("createCampaign (client): Successfully created campaign:", result._id);
+    return { ...result, id: result._id }; // Map _id to id for frontend consistency
   } catch (e: any) {
-    console.error("createCampaign (client): Error parsing successful JSON response:", e.message, "Body:", errorBodyText.substring(0,500));
+    console.error("createCampaign (client): Error parsing successful JSON response:", e.message, "Body:", responseBodyText.substring(0,500));
     throw new Error("Received an invalid success response format from the server after campaign creation.");
   }
 }
@@ -118,13 +129,14 @@ export function CreateCampaignForm() {
   const router = useRouter();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { token } = useAuth();
 
   const mutation = useMutation({
-    mutationFn: createCampaign,
+    mutationFn: (payload: CampaignCreationPayload) => createCampaign(payload, token),
     onSuccess: (data: Campaign) => { 
       toast({
         title: "Campaign Created!",
-        description: `Campaign "${data.name || campaignName}" has been successfully added with status: ${data.status}.`,
+        description: `Campaign "${data.name || campaignName}" has been successfully created with status: ${data.status}.`,
       });
       queryClient.invalidateQueries({ queryKey: ['campaigns'] }); 
       router.push("/dashboard");
@@ -203,7 +215,6 @@ export function CreateCampaignForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("CreateCampaignForm handleSubmit: Form submitted.");
     if (!campaignName || !message) { 
       toast({
         title: "Missing Information",
@@ -231,7 +242,6 @@ export function CreateCampaignForm() {
       audienceSize: audienceSize, 
     };
     
-    console.log("CreateCampaignForm handleSubmit: Calling mutation.mutate with payload:", JSON.stringify(newCampaignPayload).substring(0,300) + "...");
     mutation.mutate(newCampaignPayload);
   };
   

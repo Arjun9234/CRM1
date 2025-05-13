@@ -56,20 +56,12 @@ export function SignupForm() {
         title: "Signup Successful!",
         description: `Welcome, ${name}! Please log in to continue.`,
       });
-      router.replace('/login'); // Redirect to login page after successful signup
+      router.replace('/login'); 
     } catch (error: any) {
       console.error("Signup failed", error);
-      let errorMessage = "An error occurred during signup. Please try again.";
-      if (error.code === 'auth/email-already-in-use') {
-        errorMessage = "This email is already registered. Try logging in.";
-      } else if (error.code === 'auth/weak-password') {
-        errorMessage = "The password is too weak. Please choose a stronger password.";
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = "The email address is not valid.";
-      }
       toast({
         title: "Signup Failed",
-        description: errorMessage,
+        description: error.message || "An error occurred during signup. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -117,7 +109,7 @@ export function SignupForm() {
             <Input 
               id="password" 
               type="password" 
-              placeholder="Choose a strong password" 
+              placeholder="Choose a strong password (min. 6 chars)" 
               value={password} 
               onChange={(e) => setPassword(e.target.value)} 
               required 

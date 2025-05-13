@@ -26,10 +26,17 @@ import { useParams, useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { useAuth } from "@/hooks/use-auth";
 
-async function fetchCampaign(campaignId: string): Promise<Campaign> {
+const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`;
+
+async function fetchCampaign(campaignId: string, token: string | null): Promise<Campaign> {
   console.log(`fetchCampaign (client): Fetching campaign ${campaignId}`);
-  const response = await fetch(`/api/campaigns/${campaignId}`);
+  // const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  // if (token) {
+  //   headers['x-auth-token'] = token;
+  // }
+  const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}` /*, { headers } */);
   const responseText = await response.text();
 
   if (!response.ok) {
@@ -44,7 +51,7 @@ async function fetchCampaign(campaignId: string): Promise<Campaign> {
             errorMessage = errorData.message || `Failed to fetch campaign ${campaignId}`;
             errorDetails = errorData.errors || errorData.details || errorData;
         } catch (e) {
-            // If parsing JSON fails, use the original generic message
+             // If parsing JSON fails, use the original generic message
         }
     }
     console.error(`fetchCampaign (client) for ${campaignId}: Throwing error:`, errorMessage, "Details:", errorDetails);
@@ -55,17 +62,22 @@ async function fetchCampaign(campaignId: string): Promise<Campaign> {
   try {
     const data = JSON.parse(responseText);
     console.log(`fetchCampaign (client): Successfully fetched campaign ${campaignId}`);
-    return data;
+    return { ...data, id: data._id }; // Map _id to id
   } catch (e) {
       console.error(`fetchCampaign (client): Error parsing successful JSON response for ${campaignId}:`, e, "Body:", responseText.substring(0,500));
       throw new Error(`Failed to parse campaign data for ${campaignId}.`);
   }
 }
 
-async function deleteCampaign(campaignId: string): Promise<void> {
+async function deleteCampaignApi(campaignId: string, token: string | null): Promise<void> {
   console.log(`deleteCampaign (client): Deleting campaign ${campaignId}`);
-  const response = await fetch(`/api/campaigns/${campaignId}`, {
+  // const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  // if (token) {
+  //   headers['x-auth-token'] = token;
+  // }
+  const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}`, {
     method: 'DELETE',
+    // headers,
   });
   
   const responseText = await response.text();
@@ -91,8 +103,6 @@ async function deleteCampaign(campaignId: string): Promise<void> {
     throw err;
   }
   console.log(`deleteCampaign (client): Successfully deleted campaign ${campaignId}`);
-  // No JSON parsing needed for a successful void response, but if the server sends a JSON success message:
-  // try { const _ = JSON.parse(responseText); /* process if needed */ } catch (e) { /* ignore if not JSON */ }
 }
 
 
@@ -125,24 +135,25 @@ export default function CampaignDetailPage() {
   const router = useRouter();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { token } = useAuth();
   const campaignId = params.campaignId as string;
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false); 
 
-  const { data: campaign, isLoading, error, isError, isFetching } = useQuery({ // Added isFetching
+  const { data: campaign, isLoading, error, isError, isFetching } = useQuery({
     queryKey: ['campaign', campaignId],
-    queryFn: () => fetchCampaign(campaignId),
-    enabled: !!campaignId, 
+    queryFn: () => fetchCampaign(campaignId, token),
+    enabled: !!campaignId, // && !!token,
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteCampaign,
+    mutationFn: () => deleteCampaignApi(campaignId, token),
     onSuccess: () => {
       toast({
         title: "Campaign Deleted",
         description: `Campaign "${campaign?.name}" has been successfully deleted.`,
       });
-      queryClient.invalidateQueries({ queryKey: ['campaigns'] }); // Invalidate list on dashboard
-      router.push('/dashboard'); // Navigate after successful deletion
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] }); 
+      router.push('/dashboard'); 
       setIsDeleteDialogOpen(false); 
     },
     onError: (error: Error) => {
@@ -158,7 +169,7 @@ export default function CampaignDetailPage() {
 
   const handleDeleteCampaign = () => {
     if (campaignId) {
-      deleteMutation.mutate(campaignId);
+      deleteMutation.mutate();
     }
   };
 
@@ -180,7 +191,7 @@ export default function CampaignDetailPage() {
     );
   }
 
-  if ((isError || !campaign) && !isFetching) { // Show error only if not refetching
+  if ((isError || !campaign) && !isFetching) { 
     return (
       <AppLayout>
         <Alert variant="destructive" className="mb-6">
@@ -197,10 +208,10 @@ export default function CampaignDetailPage() {
     );
   }
   
-  if (!campaign) { // Still loading or an error occurred but isFetching is true (e.g. stale-while-revalidate)
+  if (!campaign) { 
      return (
       <AppLayout>
-        <div className="space-y-6"> {/* Fallback skeleton similar to isLoading */}
+        <div className="space-y-6"> 
           <Skeleton className="h-10 w-48" /> <Skeleton className="h-8 w-32 mb-4" />
           <div className="grid md:grid-cols-3 gap-6"> <Skeleton className="h-40 rounded-lg" /> <Skeleton className="h-40 rounded-lg" /> <Skeleton className="h-40 rounded-lg" /> </div>
           <Skeleton className="h-64 rounded-lg" /> <Skeleton className="h-32 rounded-lg" />
@@ -269,7 +280,6 @@ export default function CampaignDetailPage() {
           </div>
         </div>
         
-        {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card className="shadow-md">
             <CardHeader className="pb-2">
@@ -338,7 +348,6 @@ export default function CampaignDetailPage() {
         )}
 
         <div className="grid md:grid-cols-2 gap-6">
-            {/* Message Content */}
             <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-xl">
@@ -351,7 +360,6 @@ export default function CampaignDetailPage() {
             </CardContent>
             </Card>
 
-            {/* Segment Details */}
             <Card className="shadow-lg">
             <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-xl">
@@ -377,8 +385,6 @@ export default function CampaignDetailPage() {
             </CardContent>
             </Card>
         </div>
-
-
       </div>
     </AppLayout>
   );
