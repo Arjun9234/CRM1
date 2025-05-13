@@ -1,3 +1,4 @@
+
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
@@ -18,10 +19,10 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // Make environment variables available on the client side
-  publicRuntimeConfig: {
-    NEXT_PUBLIC_SERVER_PORT: process.env.SERVER_PORT || 5000,
-  },
+  // publicRuntimeConfig is removed.
+  // Use process.env.NEXT_PUBLIC_YOUR_VAR directly in client-side code.
+  // Ensure variables meant for client-side are prefixed with NEXT_PUBLIC_ in your .env file.
+
   // If your Node.js server is on a different domain in production,
   // you might need to configure rewrites or a proxy here for API calls,
   // or ensure CORS is correctly set up on your Node.js server.
