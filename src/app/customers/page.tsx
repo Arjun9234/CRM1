@@ -32,26 +32,75 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 
 async function fetchCustomers(): Promise<Customer[]> {
-  const response = await fetch('/api/customers'); // Correct API endpoint
+  const response = await fetch('/api/customers');
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Failed to fetch customers');
+    let errorMessage = `Failed to fetch customers (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+    try {
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorData.error || errorMessage;
+      } else {
+        const textError = await response.text();
+        errorMessage = `Server error: ${textError.substring(0, 100)}${textError.length > 100 ? '...' : ''}`;
+        console.error("Full non-JSON error from server (fetchCustomers):", textError);
+      }
+    } catch (e) {
+      console.error("Error processing error response (fetchCustomers):", e);
+    }
+    throw new Error(errorMessage);
   }
-  return response.json();
+  try {
+    return await response.json();
+  } catch (e) {
+    console.error("Error parsing successful JSON response (fetchCustomers):", e);
+    throw new Error("Failed to parse successful customer list from server.");
+  }
 }
 
 async function createCustomer(payload: CustomerCreationPayload): Promise<Customer> {
-  const response = await fetch('/api/customers', { // Correct API endpoint
+  const response = await fetch('/api/customers', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.message || 'Failed to create customer');
+    let errorMessage = `Failed to create customer (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+    try {
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorData.error || errorMessage;
+        if (errorData.errors) {
+          const fieldErrors = Object.entries(errorData.errors)
+            .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
+            .join('; ');
+          errorMessage = `Invalid data: ${fieldErrors || errorMessage}`;
+        }
+      } else {
+        const textError = await response.text();
+        errorMessage = `Server error: ${textError.substring(0, 200)}${textError.length > 200 ? '...' : ''}`; // Increased preview length
+        console.error("Full non-JSON error from server (createCustomer):", textError);
+      }
+    } catch (e) {
+      console.error("Error processing/parsing error response (createCustomer):", e);
+    }
+    throw new Error(errorMessage);
   }
-  const result = await response.json();
-  return result.customer; 
+
+  try {
+    const result = await response.json();
+    if (!result.customer) {
+        console.error("Successful response, but 'customer' field missing (createCustomer):", result);
+        throw new Error("Customer creation response was successful, but data format is incorrect.");
+    }
+    return result.customer;
+  } catch (e) {
+    const responseBodyForDebug = await response.text().catch(() => "Could not read response body again.");
+    console.error("Error parsing successful JSON response (createCustomer):", e, "Body:", responseBodyForDebug);
+    throw new Error("Failed to parse successful customer creation response from server.");
+  }
 }
 
 const customerStatusOptions: CustomerStatus[] = ['Active', 'Lead', 'Inactive', 'New', 'Archived'];
@@ -139,11 +188,11 @@ export default function CustomersPage() {
       avatarUrl: "",
       company: "",
       totalSpend: 0,
-      lastContact: formatISO(new Date()).split('T')[0],
+      lastContact: formatISO(new Date()).split('T')[0], // Default to today's date
       status: "New",
       acquisitionSource: "",
       tags: "",
-      lastSeenOnline: formatISO(new Date()).split('T')[0],
+      lastSeenOnline: formatISO(new Date()).split('T')[0], // Default to today's date
     },
   });
 
@@ -156,7 +205,7 @@ export default function CustomersPage() {
       reset();
     },
     onError: (error: Error) => {
-      toast({ title: "Error Adding Customer", description: error.message, variant: "destructive" });
+      toast({ title: "Error Adding Customer", description: error.message, variant: "destructive", duration: 8000 });
     },
   });
 
