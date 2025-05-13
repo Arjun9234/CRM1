@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle as UiAlertTitle } from "@/components/ui/alert"; // Renamed AlertTitle to UiAlertTitle
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,12 +26,16 @@ import { format } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { API_BASE_URL } from '@/lib/config'; // Import centralized API_BASE_URL
-
-// const API_BASE_URL = `http://localhost:${process.env.NEXT_PUBLIC_SERVER_PORT || 5000}/api`; // Removed
+import { API_BASE_URL } from '@/lib/config'; 
 
 async function fetchCampaign(campaignId: string, token: string | null): Promise<Campaign> {
+  // This check is crucial. If campaignId is "undefined" (string) or falsy, throw an error.
+  if (!campaignId || campaignId === "undefined") {
+    console.error(`fetchCampaign (client): Invalid campaignId received: '${campaignId}'. Aborting fetch.`);
+    throw new Error("Invalid campaign ID provided for fetching.");
+  }
   console.log(`fetchCampaign (client): Fetching campaign ${campaignId} from ${API_BASE_URL}/campaigns/${campaignId}`);
+  
   const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}`);
   const responseText = await response.text(); 
 
@@ -50,7 +54,7 @@ async function fetchCampaign(campaignId: string, token: string | null): Promise<
             } else if (responseText.toLowerCase().includes("<html")) {
                  errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}). This usually indicates a server-side problem or misconfiguration. Please check server logs.`;
             } else if (responseText) {
-                 errorMessage = responseText.substring(0, 200);
+                 errorMessage = `Server error: ${responseText.substring(0, 200)}`;
             }
         } catch (e) {
              // If parsing JSON fails, use the original generic message
@@ -76,7 +80,12 @@ async function fetchCampaign(campaignId: string, token: string | null): Promise<
 }
 
 async function deleteCampaignApi(campaignId: string, token: string | null): Promise<void> {
+  if (!campaignId || campaignId === "undefined") {
+    console.error(`deleteCampaignApi (client): Invalid campaignId received: '${campaignId}'. Aborting delete.`);
+    throw new Error("Invalid campaign ID provided for deletion.");
+  }
   console.log(`deleteCampaign (client): Deleting campaign ${campaignId} via ${API_BASE_URL}/campaigns/${campaignId}`);
+  
   const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}`, {
     method: 'DELETE',
   });
@@ -98,7 +107,7 @@ async function deleteCampaignApi(campaignId: string, token: string | null): Prom
             } else if (responseText.toLowerCase().includes("<html")){
                  errorMessage = `Server returned an unexpected HTML error page (status: ${response.status}) while deleting campaign ${campaignId}.`;
             } else if (responseText) { 
-                errorMessage = responseText.substring(0, 200); 
+                errorMessage = `Server error: ${responseText.substring(0, 200)}`; 
             }
         } catch (e) {
              // If parsing JSON fails, use the original generic message
@@ -143,17 +152,31 @@ export default function CampaignDetailPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { token } = useAuth();
-  const campaignId = params.campaignId as string;
+  
+  const campaignIdFromParams = params.campaignId;
+  // Ensure campaignId is a valid string and not "undefined"
+  const campaignId = typeof campaignIdFromParams === 'string' && campaignIdFromParams !== "undefined" ? campaignIdFromParams : null;
+
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false); 
 
   const { data: campaign, isLoading, error, isError, isFetching } = useQuery({
     queryKey: ['campaign', campaignId],
-    queryFn: () => fetchCampaign(campaignId, token),
-    enabled: !!campaignId, 
+    queryFn: () => {
+      if (!campaignId) { // Safeguard: if campaignId is null (e.g. "undefined" string was found)
+        return Promise.reject(new Error("Campaign ID is not available for fetching."));
+      }
+      return fetchCampaign(campaignId, token);
+    },
+    enabled: !!campaignId, // Query will only run if campaignId is a truthy string
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteCampaignApi(campaignId, token),
+    mutationFn: () => {
+        if(!campaignId) { // Safeguard
+            return Promise.reject(new Error("Cannot delete campaign: ID is missing."));
+        }
+        return deleteCampaignApi(campaignId, token);
+    },
     onSuccess: () => {
       toast({
         title: "Campaign Deleted",
@@ -175,10 +198,29 @@ export default function CampaignDetailPage() {
   });
 
   const handleDeleteCampaign = () => {
-    if (campaignId) {
+    if (campaignId) { // Ensure campaignId is valid before mutating
       deleteMutation.mutate();
+    } else {
+        toast({ title: "Error", description: "Campaign ID is missing, cannot delete.", variant: "destructive"});
     }
   };
+
+  if (!campaignId && !isLoading) { // If campaignId became null due to invalid param
+    return (
+      <AppLayout>
+        <Alert variant="destructive" className="mb-6">
+          <AlertTriangle className="h-4 w-4" />
+          <UiAlertTitle>Invalid Campaign ID</UiAlertTitle>
+          <AlertDescription>
+            The campaign ID provided in the URL is invalid or missing.
+          </AlertDescription>
+        </Alert>
+        <Button onClick={() => router.push('/dashboard')}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+        </Button>
+      </AppLayout>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -203,7 +245,7 @@ export default function CampaignDetailPage() {
       <AppLayout>
         <Alert variant="destructive" className="mb-6">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Error Loading Campaign</AlertTitle>
+          <UiAlertTitle>Error Loading Campaign</UiAlertTitle>
           <AlertDescription>
             {(error as Error)?.message || "The campaign could not be found or an error occurred."}
           </AlertDescription>
@@ -258,12 +300,12 @@ export default function CampaignDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)} disabled={deleteMutation.isPending}>
+            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)} disabled={deleteMutation.isPending || !campaignId}>
                 <Edit3 className="mr-2 h-4 w-4"/> Edit
             </Button>
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}> 
               <AlertDialogTrigger asChild>
-                 <Button variant="destructive" disabled={deleteMutation.isPending}>
+                 <Button variant="destructive" disabled={deleteMutation.isPending || !campaignId}>
                     <Trash2 className="mr-2 h-4 w-4"/> Delete
                 </Button>
               </AlertDialogTrigger>
@@ -325,10 +367,10 @@ export default function CampaignDetailPage() {
         { (campaign.status === "Sent" || campaign.status === "Archived" || campaign.status === "Failed") && audienceSize > 0 && (
             <Card className="shadow-lg">
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-xl">
+                    <UiAlertTitle className="flex items-center gap-2 text-xl">
                         <BarChart className="h-6 w-6 text-primary" />
                         Delivery Performance
-                    </CardTitle>
+                    </UiAlertTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="flex items-center justify-between mb-1">
@@ -357,10 +399,10 @@ export default function CampaignDetailPage() {
         <div className="grid md:grid-cols-2 gap-6">
             <Card className="shadow-lg">
             <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl">
+                <UiAlertTitle className="flex items-center gap-2 text-xl">
                 <MessageSquare className="h-6 w-6 text-primary" />
                 Campaign Message
-                </CardTitle>
+                </UiAlertTitle>
             </CardHeader>
             <CardContent>
                 <p className="text-base whitespace-pre-wrap bg-muted/50 p-4 rounded-md">{campaign.message}</p>
@@ -369,10 +411,10 @@ export default function CampaignDetailPage() {
 
             <Card className="shadow-lg">
             <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl">
+                <UiAlertTitle className="flex items-center gap-2 text-xl">
                 <SlidersHorizontal className="h-6 w-6 text-primary" />
                 Audience Segment: {campaign.segmentName || "Custom Rules"}
-                </CardTitle>
+                </UiAlertTitle>
                 <CardDescription>Logic: <span className="font-semibold">{campaign.ruleLogic}</span> between rules</CardDescription>
             </CardHeader>
             <CardContent>
