@@ -12,11 +12,11 @@ const customerCreationSchema = z.object({
   avatarUrl: z.string().url().optional().or(z.literal('')),
   company: z.string().optional(),
   totalSpend: z.number().min(0).default(0),
-  lastContact: z.string().datetime({ offset: true, precision: 3 }), // Expect ISO String with offset and milliseconds
+  lastContact: z.string().datetime({ offset: true, precision: 3 }), 
   status: z.enum(['Active', 'Lead', 'Inactive', 'New', 'Archived']),
   acquisitionSource: z.string().optional(),
   tags: z.array(z.string()).optional(),
-  lastSeenOnline: z.string().datetime({ offset: true, precision: 3 }).optional(), // Expect ISO String with offset and milliseconds
+  lastSeenOnline: z.string().datetime({ offset: true, precision: 3 }).optional(),
 });
 
 const dummyCustomers: Customer[] = [
@@ -94,46 +94,63 @@ const dummyCustomers: Customer[] = [
 
 export async function GET() {
   console.log("GET /api/customers: Request received.");
+  let firebaseCustomers: Customer[] = [];
+  let firebaseErrorOccurred = false;
+
   try {
     if (!db) {
-        console.warn("GET /api/customers: Firestore database is not initialized. Returning dummy data.");
-        return NextResponse.json(dummyCustomers.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ));
-    }
-    console.log("GET /api/customers: Firestore db instance seems available. Querying customers collection...");
-    const customersCol = collection(db, 'customers');
-    const q = query(customersCol, orderBy('createdAt', 'desc'));
-    
-    console.log("GET /api/customers: Attempting to fetch documents from Firestore...");
-    const customerSnapshot = await getDocs(q);
-    console.log(`GET /api/customers: Firestore getDocs call completed. Found ${customerSnapshot.docs.length} documents.`);
+      console.warn("GET /api/customers: Firestore database is not initialized. Firebase interaction skipped.");
+      firebaseErrorOccurred = true;
+    } else {
+      console.log("GET /api/customers: Firestore db instance available. Querying customers collection...");
+      const customersCol = collection(db, 'customers');
+      const q = query(customersCol, orderBy('createdAt', 'desc'));
+      
+      console.log("GET /api/customers: Attempting to fetch documents from Firestore...");
+      const customerSnapshot = await getDocs(q);
+      console.log(`GET /api/customers: Firestore getDocs call completed. Found ${customerSnapshot.docs.length} documents.`);
 
-    if (customerSnapshot.empty) {
-      console.log("GET /api/customers: No customers found in Firestore after query. Returning dummy data.");
-      return NextResponse.json(dummyCustomers.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ));
+      if (!customerSnapshot.empty) {
+        firebaseCustomers = customerSnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
+            lastContact: (data.lastContact instanceof Timestamp ? data.lastContact.toDate().toISOString() : data.lastContact as string) || new Date().toISOString(),
+            lastSeenOnline: (data.lastSeenOnline instanceof Timestamp ? data.lastSeenOnline.toDate().toISOString() : data.lastSeenOnline as string),
+            updatedAt: (data.updatedAt as Timestamp)?.toDate().toISOString(),
+          } as Customer;
+        });
+      }
     }
-
-    const customerList: Customer[] = customerSnapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        createdAt: (data.createdAt as Timestamp)?.toDate().toISOString() || new Date().toISOString(),
-        lastContact: (data.lastContact instanceof Timestamp ? data.lastContact.toDate().toISOString() : data.lastContact as string) || new Date().toISOString(),
-        lastSeenOnline: (data.lastSeenOnline instanceof Timestamp ? data.lastSeenOnline.toDate().toISOString() : data.lastSeenOnline as string),
-        updatedAt: (data.updatedAt as Timestamp)?.toDate().toISOString(),
-      } as Customer;
-    });
-    console.log("GET /api/customers: Successfully fetched and mapped customers from Firestore. Returning customer list.");
-    return NextResponse.json(customerList);
   } catch (error) {
     console.error("Error fetching customers from Firebase (GET /api/customers):", error);
-     if (error instanceof Error && (error.message.includes('firestore/unavailable') || error.message.includes('auth/invalid-api-key') || error.message.includes('Failed to fetch') || error.message.includes('deadline-exceeded'))) {
-        console.warn("Firebase unavailable, auth error, network issue, or deadline exceeded. Returning dummy customer data for GET /api/customers. Error message:", error.message);
-        return NextResponse.json(dummyCustomers.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ));
+    firebaseErrorOccurred = true;
+    if (error instanceof Error && (error.message.includes('firestore/unavailable') || error.message.includes('auth/invalid-api-key') || error.message.includes('Failed to fetch') || error.message.includes('deadline-exceeded'))) {
+        console.warn("Firebase unavailable, auth error, network issue, or deadline exceeded during GET /api/customers. Error message:", error.message);
     }
-    console.error("GET /api/customers: Unhandled error, returning 500. Error: ", (error as Error).message);
-    return NextResponse.json({ message: 'Failed to fetch customers', error: (error as Error).message }, { status: 500 });
   }
+
+  const combinedCustomersMap = new Map<string, Customer>();
+
+  dummyCustomers.forEach(customer => {
+    combinedCustomersMap.set(customer.id, JSON.parse(JSON.stringify(customer))); 
+  });
+
+  firebaseCustomers.forEach(customer => {
+    combinedCustomersMap.set(customer.id, customer);
+  });
+  
+  const finalCustomerList = Array.from(combinedCustomersMap.values())
+                               .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  if (firebaseErrorOccurred) {
+     console.warn("GET /api/customers: Firebase error occurred. Response will rely on dummy data, potentially merged with any successfully fetched Firebase data if error was partial.");
+  }
+  
+  console.log(`GET /api/customers: Returning ${finalCustomerList.length} customers after merging.`);
+  return NextResponse.json(finalCustomerList);
 }
 
 export async function POST(request: Request) {
@@ -182,7 +199,7 @@ export async function POST(request: Request) {
         console.error("Error Message:", firestoreError.message);
         console.error("Error Code:", firestoreError.code);
         console.error("Data attempted to save (preview):", JSON.stringify(newCustomerData, null, 2).substring(0, 500) + "...");
-        console.error("Stack:", firestoreError.stack);
+        // console.error("Stack:", firestoreError.stack); // Stack can be very long
         console.error("--- End of Firestore addDoc Error ---");
         throw firestoreError;
     }
@@ -223,15 +240,51 @@ export async function POST(request: Request) {
         errorDetails = { type: 'SyntaxError', syntaxErrorMessage: error.message };
     } else if (error instanceof Error) {
         errorMessage = error.message;
-        errorDetails = { type: 'GenericError', genericErrorMessage: error.message, stack: error.stack?.substring(0, 300) };
+        errorDetails = { type: 'GenericError', genericErrorMessage: error.message, stackPreview: error.stack?.substring(0, 300) };
+    }
+
+    let safeDetailsForResponse: any = { message: "Details not available or not serializable." };
+    if (errorDetails && typeof errorDetails === 'object') {
+        safeDetailsForResponse = {};
+        for (const key in errorDetails) {
+            if (Object.prototype.hasOwnProperty.call(errorDetails, key)) {
+                const value = errorDetails[key];
+                // Allow simple primitive types and arrays of strings
+                if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null) {
+                    safeDetailsForResponse[key] = value;
+                } else if (Array.isArray(value) && value.every(item => typeof item === 'string')) {
+                     safeDetailsForResponse[key] = value;
+                } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) { // Handle nested objects (e.g. Zod fieldErrors)
+                    safeDetailsForResponse[key] = {};
+                    for(const nestedKey in value as Record<string, any>) {
+                        if (Object.prototype.hasOwnProperty.call(value, nestedKey)) {
+                            const nestedValue = (value as Record<string, any>)[nestedKey];
+                             if (typeof nestedValue === 'string' || (Array.isArray(nestedValue) && nestedValue.every(item => typeof item === 'string'))) {
+                                safeDetailsForResponse[key][nestedKey] = nestedValue;
+                             } else {
+                                safeDetailsForResponse[key][nestedKey] = "[Non-Serializable Nested Value]";
+                             }
+                        }
+                    }
+                } else {
+                    safeDetailsForResponse[key] = "[Non-Serializable Value]";
+                }
+            }
+        }
+    } else if (typeof errorDetails === 'string') { // If errorDetails itself is just a string
+        safeDetailsForResponse = { originalDetails: errorDetails };
     }
 
     console.error("Error Message:", errorMessage);
-    console.error("Error Details:", JSON.stringify(errorDetails, null, 2));
+    console.error("Error Details (Processed for logging):", JSON.stringify(safeDetailsForResponse, null, 2));
     console.error("--- End of Critical Error in POST /api/customers ---");
 
     const safeErrorMessageForResponse = typeof errorMessage === 'string' && errorMessage.length < 200 ? errorMessage : 'An unexpected error occurred.';
-    return NextResponse.json({ message: 'Failed to create customer', error: safeErrorMessageForResponse, details: errorDetails }, { status: 500 });
+    return NextResponse.json({ 
+        message: 'Failed to create customer', 
+        error: safeErrorMessageForResponse, 
+        details: safeDetailsForResponse // Use the sanitized details
+    }, { status: 500 });
   }
 }
 
