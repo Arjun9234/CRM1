@@ -19,8 +19,8 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
   const sentCount = campaign.sentCount || 0;
   const failedCount = campaign.failedCount || 0;
 
-  const attemptedCount = (campaign.status === 'Sent' || campaign.status === 'Failed' || campaign.status === 'Archived' || campaign.status === 'Cancelled') 
-    ? audienceSize 
+  const attemptedCount = (campaign.status === 'Sent' || campaign.status === 'Failed' || campaign.status === 'Archived' || campaign.status === 'Cancelled')
+    ? audienceSize
     : (campaign.status === 'Scheduled' ? audienceSize : 0);
 
   const deliverySuccessRate = audienceSize > 0 ? (sentCount / audienceSize) * 100 : 0;
@@ -61,7 +61,7 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
       <CardHeader>
         <div className="flex justify-between items-start">
           <CardTitle className="text-xl text-primary">{campaign.name}</CardTitle>
-          <Badge 
+          <Badge
             variant={badgeVariant}
             className={badgeClassName}
           >
@@ -92,7 +92,7 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            <Target className="h-5 w-5 text-muted-foreground" /> 
+            <Target className="h-5 w-5 text-muted-foreground" />
             <div>
               <p className="text-xs text-muted-foreground">Attempted</p>
               <p className="text-lg font-semibold">{attemptedCount.toLocaleString()}</p>
@@ -121,11 +121,17 @@ export function CampaignCard({ campaign }: CampaignCardProps) {
         )}
       </CardContent>
       <CardFooter>
-        <Button asChild variant="link" className="text-primary p-0">
-          <Link href={`/campaigns/${campaign.id}`}>
-            <Eye className="mr-2 h-4 w-4" /> View Details
-          </Link>
-        </Button>
+        {campaign && campaign.id && typeof campaign.id === 'string' && campaign.id.trim() !== '' ? (
+          <Button asChild variant="link" className="text-primary p-0">
+            <Link href={`/campaigns/${campaign.id}`}>
+              <Eye className="mr-2 h-4 w-4" /> View Details
+            </Link>
+          </Button>
+        ) : (
+          <Button variant="link" className="text-muted-foreground p-0" disabled>
+            <Eye className="mr-2 h-4 w-4" /> Details Unavailable
+          </Button>
+        )}
       </CardFooter>
     </Card>
   );
