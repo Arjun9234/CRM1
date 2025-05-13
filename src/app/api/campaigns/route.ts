@@ -2,8 +2,7 @@
 import { NextResponse } from 'next/server';
 import type { Campaign, CampaignCreationPayload } from '@/lib/types';
 import { z } from 'zod';
-// Corrected import path for dummy-data-store
-import { getInMemoryDummyCampaigns, addInMemoryDummyCampaign } from '@/lib/dummy-data-store';
+// Removed: import { getInMemoryDummyCampaigns, addInMemoryDummyCampaign } from '@/lib/dummy-data-store';
 
 // Zod schema for validation
 const segmentRuleSchema = z.object({
@@ -54,10 +53,6 @@ export async function GET() {
     console.error("--- CRITICAL UNHANDLED ERROR IN GET /api/campaigns (Next.js API route) ---");
     console.error("Error Message:", error.message);
     console.error("Error Stack:", error.stack);
-    // Fallback to dummy data if backend fails and dummy store exists
-    // console.warn("Falling back to in-memory dummy campaigns due to backend error.");
-    // const dummyCampaigns = getInMemoryDummyCampaigns();
-    // return NextResponse.json(dummyCampaigns);
      return NextResponse.json(
       { message: 'Failed to fetch campaigns', error: error.message || 'Unknown server error' },
       { status: 500 }
@@ -123,17 +118,6 @@ export async function POST(request: Request) {
     console.error("--- CRITICAL ERROR IN POST /api/campaigns (Next.js API route) ---");
     console.error("Error Message:", error.message);
     console.error("Error Stack:", error.stack); 
-    // Fallback to dummy data store for adding campaign if backend fails
-    // console.warn("Falling back to in-memory dummy store for adding campaign due to backend error.");
-    // try {
-    //   const tempBodyForDummy = await request.json(); // Re-parse or use already parsed 'body'
-    //   const dummyCampaignData = campaignCreationSchema.parse(tempBodyForDummy) as CampaignCreationPayload;
-    //   const createdDummyCampaign = addInMemoryDummyCampaign(dummyCampaignData);
-    //   return NextResponse.json(createdDummyCampaign, { status: 201 });
-    // } catch (dummyError: any) {
-    //   console.error("Error adding to dummy store after backend failure:", dummyError.message);
-    //   return NextResponse.json({ message: 'Failed to create campaign (backend and fallback failed)', error: error.message, fallbackError: dummyError.message }, { status: 500 });
-    // }
      return NextResponse.json({ message: 'Failed to create campaign', error: error.message || 'Unknown server error' }, { status: 500 });
   }
 }

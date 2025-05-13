@@ -2,8 +2,7 @@
 import { NextResponse } from 'next/server';
 import type { CampaignUpdatePayload, Campaign } from '@/lib/types';
 import { z } from 'zod';
-// Corrected import path for dummy-data-store
-import { getCampaignById, updateInMemoryDummyCampaign, deleteInMemoryDummyCampaign } from '@/lib/dummy-data-store';
+// Removed: import { getCampaignById, updateInMemoryDummyCampaign, deleteInMemoryDummyCampaign } from '@/lib/dummy-data-store';
 
 
 const segmentRuleSchema = z.object({
@@ -48,13 +47,6 @@ export async function GET(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error(`Error in GET /api/campaigns/${campaignId} (Next.js API route):`, errorMessage);
-    
-    // Fallback to dummy data
-    // console.warn(`Backend failed for GET /api/campaigns/${campaignId}. Falling back to dummy data.`);
-    // const dummyCampaign = getCampaignById(campaignId);
-    // if (dummyCampaign) {
-    //   return NextResponse.json(dummyCampaign);
-    // }
     
     return NextResponse.json({ message: 'Failed to fetch campaign', error: errorMessage }, { status: 500 });
   }
@@ -104,13 +96,6 @@ export async function PUT(
     const errorMessage = error instanceof Error ? error.message : 'Unknown error during update';
     console.error(`Error in PUT /api/campaigns/${campaignId} (Next.js API route):`, errorMessage);
 
-    // Fallback to dummy data
-    // console.warn(`Backend failed for PUT /api/campaigns/${campaignId}. Falling back to dummy data.`);
-    // const updatedDummyCampaign = updateInMemoryDummyCampaign(campaignId, validatedDataToUpdate);
-    // if (updatedDummyCampaign) {
-    //   return NextResponse.json(updatedDummyCampaign);
-    // }
-
     return NextResponse.json({ message: 'Failed to update campaign', error: errorMessage }, { status: 500 });
   }
 }
@@ -153,13 +138,6 @@ export async function DELETE(
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error(`Error in DELETE /api/campaigns/${campaignId} (Next.js API route):`, errorMessage);
     
-    // Fallback to dummy data
-    // console.warn(`Backend failed for DELETE /api/campaigns/${campaignId}. Falling back to dummy data.`);
-    // const success = deleteInMemoryDummyCampaign(campaignId);
-    // if (success) {
-    //   return NextResponse.json({ message: 'Campaign deleted successfully (from dummy store)' });
-    // }
-
     return NextResponse.json({ message: 'Failed to delete campaign', error: errorMessage }, { status: 500 });
   }
 }
