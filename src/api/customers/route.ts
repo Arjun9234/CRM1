@@ -93,17 +93,22 @@ const dummyCustomers: Customer[] = [
 ];
 
 export async function GET() {
+  console.log("GET /api/customers: Request received.");
   try {
     if (!db) {
         console.warn("GET /api/customers: Firestore database is not initialized. Returning dummy data.");
         return NextResponse.json(dummyCustomers.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ));
     }
+    console.log("GET /api/customers: Firestore db instance seems available. Querying customers collection...");
     const customersCol = collection(db, 'customers');
     const q = query(customersCol, orderBy('createdAt', 'desc'));
+    
+    console.log("GET /api/customers: Attempting to fetch documents from Firestore...");
     const customerSnapshot = await getDocs(q);
+    console.log(`GET /api/customers: Firestore getDocs call completed. Found ${customerSnapshot.docs.length} documents.`);
 
     if (customerSnapshot.empty) {
-      console.log("GET /api/customers: No customers found in Firestore. Returning dummy data.");
+      console.log("GET /api/customers: No customers found in Firestore after query. Returning dummy data.");
       return NextResponse.json(dummyCustomers.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ));
     }
 
@@ -118,13 +123,15 @@ export async function GET() {
         updatedAt: (data.updatedAt as Timestamp)?.toDate().toISOString(),
       } as Customer;
     });
+    console.log("GET /api/customers: Successfully fetched and mapped customers from Firestore. Returning customer list.");
     return NextResponse.json(customerList);
   } catch (error) {
     console.error("Error fetching customers from Firebase (GET /api/customers):", error);
-     if (error instanceof Error && (error.message.includes('firestore/unavailable') || error.message.includes('auth/invalid-api-key') || error.message.includes('Failed to fetch'))) {
-        console.warn("Firebase unavailable or network issue, returning dummy customer data for GET /api/customers.");
+     if (error instanceof Error && (error.message.includes('firestore/unavailable') || error.message.includes('auth/invalid-api-key') || error.message.includes('Failed to fetch') || error.message.includes('deadline-exceeded'))) {
+        console.warn("Firebase unavailable, auth error, network issue, or deadline exceeded. Returning dummy customer data for GET /api/customers. Error message:", error.message);
         return NextResponse.json(dummyCustomers.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ));
     }
+    console.error("GET /api/customers: Unhandled error, returning 500. Error: ", (error as Error).message);
     return NextResponse.json({ message: 'Failed to fetch customers', error: (error as Error).message }, { status: 500 });
   }
 }
@@ -166,13 +173,15 @@ export async function POST(request: Request) {
     const customersCol = collection(db, 'customers');
     let docRef;
     try {
+        console.log("POST /api/customers: Attempting to add document to Firestore...");
         docRef = await addDoc(customersCol, newCustomerData);
+        console.log("POST /api/customers: Document added successfully to Firestore with ID:", docRef.id);
     } catch (firestoreError: any) {
         console.error("--- Firestore addDoc Error in POST /api/customers ---");
         console.error("Timestamp:", new Date().toISOString());
         console.error("Error Message:", firestoreError.message);
         console.error("Error Code:", firestoreError.code);
-        console.error("Data attempted to save:", JSON.stringify(newCustomerData, null, 2).substring(0, 500) + "...");
+        console.error("Data attempted to save (preview):", JSON.stringify(newCustomerData, null, 2).substring(0, 500) + "...");
         console.error("Stack:", firestoreError.stack);
         console.error("--- End of Firestore addDoc Error ---");
         throw firestoreError;
@@ -225,3 +234,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: 'Failed to create customer', error: safeErrorMessageForResponse, details: errorDetails }, { status: 500 });
   }
 }
+
+    
