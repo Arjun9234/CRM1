@@ -4,12 +4,28 @@
 import type { User as AppUser } from '@/lib/types';
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { firebaseAuthService } from '@/lib/firebase'; // Updated import
+import { firebaseAuthService } from '@/lib/firebase';
 
 const TOKEN_STORAGE_KEY = 'engagesphere-auth-token';
 const USER_STORAGE_KEY = 'engagesphere-auth-user';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || `/api`;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
+const getApiBaseUrl = () => {
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL;
+  }
+  if (IS_PRODUCTION) {
+    // For Vercel or similar, relative /api should work if vercel.json routes correctly
+    return '/api';
+  } else {
+    // Local development
+    const port = process.env.NEXT_PUBLIC_SERVER_PORT || 5000;
+    return `http://localhost:${port}/api`;
+  }
+};
+
+const API_BASE_URL = getApiBaseUrl();
 const AUTH_API_ENDPOINT = `${API_BASE_URL}/auth`;
 
 
@@ -44,19 +60,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearAuthData();
       }
     }
-    // Initial loading is done after checking local storage
-    // onAuthStateChanged will handle Firebase state changes subsequently
     setIsLoading(false);
 
 
     const unsubscribe = onAuthStateChanged(firebaseAuthService, async (firebaseUser) => {
-      if (!firebaseUser && !localStorage.getItem(TOKEN_STORAGE_KEY)) { // If no firebase user and no local token
+      if (!firebaseUser && !localStorage.getItem(TOKEN_STORAGE_KEY)) { 
         clearAuthData();
-        setIsLoading(false); // Ensure loading is false if user logs out or token expires
+        setIsLoading(false); 
       }
-      // If firebaseUser exists, Google Sign-In or other Firebase auth methods will handle setting user/token
-      // If firebaseUser is null but there IS a local token, it might be a custom JWT session, let it persist
-      // The main isLoading flag is for the initial provider load.
     });
     return () => unsubscribe();
   }, []);
@@ -104,7 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearAuthData();
       console.error("Login failed in AuthProvider catch block:", error);
       if (error instanceof Error && error.message.includes("Failed to fetch")) {
-        throw new Error("Failed to connect to the server. Please ensure the backend server is running and accessible at the configured API_BASE_URL.");
+        throw new Error("Failed to connect to the server. Please ensure the backend server is running and accessible.");
       }
       if (error instanceof Error) {
         throw error;
@@ -141,7 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error("Signup failed in AuthProvider:", error);
        if (error instanceof Error && error.message.includes("Failed to fetch")) {
-        throw new Error("Failed to connect to the server for signup. Please ensure the backend server is running at the configured API_BASE_URL.");
+        throw new Error("Failed to connect to the server for signup. Please ensure the backend server is running.");
       }
        if (error instanceof Error) throw error;
        throw new Error(String(error) || "An unknown signup error occurred.");
@@ -214,7 +225,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error("Google Sign-In popup was closed before completion.");
       }
       if (error instanceof Error && error.message.includes("Failed to fetch")) {
-        throw new Error("Failed to connect to the server for Google Sign-In. Please ensure the backend server is running and accessible at the configured API_BASE_URL.");
+        throw new Error("Failed to connect to the server for Google Sign-In. Please ensure the backend server is running and accessible.");
       }
       if (error instanceof Error) throw error;
       throw new Error(String(error.message || error) || "An unknown Google Sign-In error occurred.");
