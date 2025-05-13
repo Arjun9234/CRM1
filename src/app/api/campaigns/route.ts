@@ -29,28 +29,30 @@ export async function GET() {
     const response = await fetch(`${API_BASE_URL}/campaigns`, {
       cache: 'no-store', // Ensure fresh data
     });
+    const responseText = await response.text();
+
     if (!response.ok) {
-      const errorBody = await response.text(); // Read body once
-      console.error("Error fetching campaigns from backend:", response.status, errorBody ? errorBody.substring(0, 500) : "Empty error body");
+      console.error("Error fetching campaigns from backend (Next.js API route):", response.status, responseText.substring(0, 500));
       let errorMessage = `Backend error: ${response.status}`;
       try {
-        if (errorBody && errorBody.trim().toLowerCase().startsWith("<html")) {
+        if (responseText && responseText.trim().toLowerCase().startsWith("<html")) {
           errorMessage = `Backend returned an HTML error page (status: ${response.status}). Check backend server logs.`;
-        } else if (errorBody) {
-          const errorJson = JSON.parse(errorBody);
+        } else if (responseText) {
+          const errorJson = JSON.parse(responseText);
           errorMessage = errorJson.message || errorMessage;
         }
       } catch(e: any) {
         // If JSON.parse fails or it was an HTML error initially caught
-        errorMessage = `Failed to fetch campaigns from backend. Status: ${response.status}. Response: ${errorBody ? errorBody.substring(0,100) : "Empty response"}`;
+        errorMessage = `Failed to fetch campaigns from backend. Status: ${response.status}. Response: ${responseText ? responseText.substring(0,100) : "Empty response"}`;
       }
       throw new Error(errorMessage);
     }
-    const campaigns: Campaign[] = await response.json();
+    const campaigns: Campaign[] = JSON.parse(responseText);
     return NextResponse.json(campaigns);
   } catch (error: any) {
     console.error("--- CRITICAL UNHANDLED ERROR IN GET /api/campaigns (Next.js API route) ---");
     console.error("Error Message:", error.message);
+    console.error("Error Stack:", error.stack);
     return NextResponse.json(
       { message: 'Failed to fetch campaigns', error: error.message || 'Unknown server error' },
       { status: 500 }
@@ -85,25 +87,25 @@ export async function POST(request: Request) {
       body: JSON.stringify(validationResult.data),
     });
 
-    // Try to parse JSON regardless of status, as backend might send JSON error details
-    let responseData;
     const responseText = await backendResponse.text();
+    let responseData;
+
     try {
         responseData = JSON.parse(responseText);
     } catch (e) {
-        // If JSON parsing fails, and it's an error, use the text as error message
         if (!backendResponse.ok) {
-            console.error("Error creating campaign via backend, non-JSON response:", backendResponse.status, responseText);
+            console.error("Error creating campaign via backend, non-JSON response:", backendResponse.status, responseText.substring(0, 500));
             throw new Error(responseText.substring(0, 200) || `Backend error: ${backendResponse.status}`);
         }
-        // If it was OK but not JSON, this is unexpected
-        console.warn("Backend response was OK but not valid JSON:", responseText);
-        responseData = { message: "Campaign created, but response format was unexpected." }; // Or handle as error
+        // If response is OK but not JSON, it might indicate a misconfiguration or an unexpected success response format from the backend.
+        console.warn("Backend response was OK but not valid JSON (POST /api/campaigns):", responseText.substring(0,500));
+        // The backend for campaigns is expected to return JSON.
+        throw new Error("Backend response was OK but not valid JSON. Expected JSON campaign data.");
     }
 
 
     if (!backendResponse.ok) {
-      console.error("Error creating campaign via backend:", backendResponse.status, responseData);
+      console.error("Error creating campaign via backend (Next.js API route):", backendResponse.status, responseData);
       throw new Error(responseData?.message || `Backend error: ${backendResponse.status}`);
     }
     
@@ -112,6 +114,7 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("--- CRITICAL ERROR IN POST /api/campaigns (Next.js API route) ---");
     console.error("Error Message:", error.message);
+    console.error("Error Stack:", error.stack);
     return NextResponse.json({ message: 'Failed to create campaign', error: error.message || 'Unknown server error' }, { status: 500 });
   }
 }
