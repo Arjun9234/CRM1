@@ -28,42 +28,71 @@ import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 
 async function fetchCampaign(campaignId: string): Promise<Campaign> {
+  console.log(`fetchCampaign (client): Fetching campaign ${campaignId}`);
   const response = await fetch(`/api/campaigns/${campaignId}`);
+  const responseText = await response.text();
+
   if (!response.ok) {
     let errorMessage = `Failed to fetch campaign ${campaignId} (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+    let errorDetails: any = null;
+    console.error(`fetchCampaign (client) for ${campaignId}: Error response text (first 500 chars):`, responseText.substring(0, 500));
      if (response.status === 504) {
         errorMessage = `Failed to fetch campaign: The server took too long to respond (Gateway Timeout). This might be a temporary issue.`;
     } else {
         try {
-            const errorData = await response.json();
+            const errorData = JSON.parse(responseText);
             errorMessage = errorData.message || `Failed to fetch campaign ${campaignId}`;
+            errorDetails = errorData.errors || errorData.details || errorData;
         } catch (e) {
             // If parsing JSON fails, use the original generic message
         }
     }
-    throw new Error(errorMessage);
+    console.error(`fetchCampaign (client) for ${campaignId}: Throwing error:`, errorMessage, "Details:", errorDetails);
+    const err = new Error(errorMessage);
+    (err as any).details = errorDetails;
+    throw err;
   }
-  return response.json();
+  try {
+    const data = JSON.parse(responseText);
+    console.log(`fetchCampaign (client): Successfully fetched campaign ${campaignId}`);
+    return data;
+  } catch (e) {
+      console.error(`fetchCampaign (client): Error parsing successful JSON response for ${campaignId}:`, e, "Body:", responseText.substring(0,500));
+      throw new Error(`Failed to parse campaign data for ${campaignId}.`);
+  }
 }
 
 async function deleteCampaign(campaignId: string): Promise<void> {
+  console.log(`deleteCampaign (client): Deleting campaign ${campaignId}`);
   const response = await fetch(`/api/campaigns/${campaignId}`, {
     method: 'DELETE',
   });
+  
+  const responseText = await response.text();
+
   if (!response.ok) {
     let errorMessage = `Failed to delete campaign ${campaignId} (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
+    let errorDetails: any = null;
+    console.error(`deleteCampaign (client) for ${campaignId}: Error response text (first 500 chars):`, responseText.substring(0, 500));
     if (response.status === 504) {
         errorMessage = `Failed to delete campaign: The server took too long to respond (Gateway Timeout). Please try again later.`;
     } else {
         try {
-            const errorData = await response.json();
+            const errorData = JSON.parse(responseText);
             errorMessage = errorData.message || `Failed to delete campaign ${campaignId}`;
+            errorDetails = errorData.errors || errorData.details || errorData;
         } catch (e) {
              // If parsing JSON fails, use the original generic message
         }
     }
-    throw new Error(errorMessage);
+    console.error(`deleteCampaign (client) for ${campaignId}: Throwing error:`, errorMessage, "Details:", errorDetails);
+    const err = new Error(errorMessage);
+    (err as any).details = errorDetails;
+    throw err;
   }
+  console.log(`deleteCampaign (client): Successfully deleted campaign ${campaignId}`);
+  // No JSON parsing needed for a successful void response, but if the server sends a JSON success message:
+  // try { const _ = JSON.parse(responseText); /* process if needed */ } catch (e) { /* ignore if not JSON */ }
 }
 
 
@@ -99,7 +128,7 @@ export default function CampaignDetailPage() {
   const campaignId = params.campaignId as string;
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false); 
 
-  const { data: campaign, isLoading, error, isError } = useQuery({
+  const { data: campaign, isLoading, error, isError, isFetching } = useQuery({ // Added isFetching
     queryKey: ['campaign', campaignId],
     queryFn: () => fetchCampaign(campaignId),
     enabled: !!campaignId, 
@@ -112,8 +141,8 @@ export default function CampaignDetailPage() {
         title: "Campaign Deleted",
         description: `Campaign "${campaign?.name}" has been successfully deleted.`,
       });
-      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-      router.push('/dashboard');
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] }); // Invalidate list on dashboard
+      router.push('/dashboard'); // Navigate after successful deletion
       setIsDeleteDialogOpen(false); 
     },
     onError: (error: Error) => {
@@ -151,7 +180,7 @@ export default function CampaignDetailPage() {
     );
   }
 
-  if (isError || !campaign) {
+  if ((isError || !campaign) && !isFetching) { // Show error only if not refetching
     return (
       <AppLayout>
         <Alert variant="destructive" className="mb-6">
@@ -167,6 +196,19 @@ export default function CampaignDetailPage() {
       </AppLayout>
     );
   }
+  
+  if (!campaign) { // Still loading or an error occurred but isFetching is true (e.g. stale-while-revalidate)
+     return (
+      <AppLayout>
+        <div className="space-y-6"> {/* Fallback skeleton similar to isLoading */}
+          <Skeleton className="h-10 w-48" /> <Skeleton className="h-8 w-32 mb-4" />
+          <div className="grid md:grid-cols-3 gap-6"> <Skeleton className="h-40 rounded-lg" /> <Skeleton className="h-40 rounded-lg" /> <Skeleton className="h-40 rounded-lg" /> </div>
+          <Skeleton className="h-64 rounded-lg" /> <Skeleton className="h-32 rounded-lg" />
+        </div>
+      </AppLayout>
+    );
+  }
+
 
   const audienceSize = campaign.audienceSize || 0;
   const sentCount = campaign.sentCount || 0;
@@ -198,12 +240,12 @@ export default function CampaignDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)} disabled={campaign.status === 'Sent' || campaign.status === 'Archived' || campaign.status === 'Failed'}>
+            <Button variant="outline" onClick={() => router.push(`/campaigns/${campaignId}/edit`)} disabled={campaign.status === 'Sent' || campaign.status === 'Archived' || campaign.status === 'Failed' || deleteMutation.isPending}>
                 <Edit3 className="mr-2 h-4 w-4"/> Edit
             </Button>
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}> 
               <AlertDialogTrigger asChild>
-                 <Button variant="destructive">
+                 <Button variant="destructive" disabled={deleteMutation.isPending}>
                     <Trash2 className="mr-2 h-4 w-4"/> Delete
                 </Button>
               </AlertDialogTrigger>

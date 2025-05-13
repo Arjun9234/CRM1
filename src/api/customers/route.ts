@@ -9,15 +9,16 @@ import { subDays, formatISO, subHours } from 'date-fns';
 const customerCreationSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email address"),
-  avatarUrl: z.string().url().optional().or(z.literal('')),
+  avatarUrl: z.string().url("Invalid URL for avatar").optional().or(z.literal('')),
   company: z.string().optional(),
-  totalSpend: z.number().min(0).default(0),
+  totalSpend: z.coerce.number().min(0, "Total spend cannot be negative").default(0),
   lastContact: z.string().datetime({ offset: true, precision: 3, message: "Last contact must be a valid ISO 8601 datetime string" }), 
   status: z.enum(['Active', 'Lead', 'Inactive', 'New', 'Archived']),
   acquisitionSource: z.string().optional(),
-  tags: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(), // Expecting an array of strings
   lastSeenOnline: z.string().datetime({ offset: true, precision: 3, message: "Last seen online must be a valid ISO 8601 datetime string" }).optional(),
 });
+
 
 const dummyCustomers: Customer[] = [
   {
@@ -164,22 +165,24 @@ export async function POST(request: Request) {
   console.log("POST /api/customers: Received request at", new Date().toISOString());
   try {
     if (!db) {
-      console.error("POST /api/customers: Firestore database is not initialized. Check Firebase configuration.");
-      return NextResponse.json({ message: 'Database not initialized. Ensure Firebase is correctly configured.' }, { status: 503 }); // 503 Service Unavailable
+      console.error("POST /api/customers: Firestore database is not initialized. Firebase SDK might not have loaded correctly or config is missing/invalid. Check server startup logs for 'Firebase initialization' messages.");
+      return NextResponse.json({ message: 'Database not initialized. Server configuration issue.', error: 'DB_INIT_FAILURE' }, { status: 503 });
     }
-    console.log("POST /api/customers: Firestore DB instance seems available.");
+    console.log("POST /api/customers: Firestore DB instance appears available.");
 
     let body;
+    const rawBody = await request.text();
+    console.log("POST /api/customers: Raw request body (first 500 chars):", rawBody.substring(0, 500) + (rawBody.length > 500 ? "..." : ""));
+    
     try {
-        const rawBody = await request.text(); // Read as text first for logging
-        console.log("POST /api/customers: Raw request body:", rawBody.substring(0, 500) + (rawBody.length > 500 ? "..." : ""));
-        body = JSON.parse(rawBody); // Then parse
+        body = JSON.parse(rawBody);
     } catch (jsonError: any) {
         console.error("POST /api/customers: Invalid JSON in request body:", jsonError.message);
-        return NextResponse.json({ message: 'Invalid JSON payload provided.', error: jsonError.message }, { status: 400 });
+        console.error("POST /api/customers: Raw body that failed parsing:", rawBody);
+        return NextResponse.json({ message: 'Invalid JSON payload provided.', error: jsonError.message, details: "Request body could not be parsed as JSON." }, { status: 400 });
     }
 
-    console.log("POST /api/customers: Parsed request body:", JSON.stringify(body, null, 2).substring(0, 1000) + (JSON.stringify(body, null, 2).length > 1000 ? "..." : ""));
+    console.log("POST /api/customers: Parsed request body (first 1000 chars):", JSON.stringify(body, null, 2).substring(0, 1000) + (JSON.stringify(body, null, 2).length > 1000 ? "..." : ""));
     
     const validationResult = customerCreationSchema.safeParse(body);
     if (!validationResult.success) {
@@ -191,16 +194,17 @@ export async function POST(request: Request) {
     }
     console.log("POST /api/customers: Request body validated successfully.");
 
-    const { lastContact, lastSeenOnline, ...restOfData } = validationResult.data;
+    const { lastContact, lastSeenOnline, tags, ...restOfData } = validationResult.data;
 
     const newCustomerDataForFirestore = {
       ...restOfData,
-      lastContact: Timestamp.fromDate(new Date(lastContact)), // Convert validated ISO string to Timestamp
-      lastSeenOnline: lastSeenOnline ? Timestamp.fromDate(new Date(lastSeenOnline)) : Timestamp.now(), // Convert or use now
+      tags: tags || [], // Ensure tags is an array, even if undefined from payload
+      lastContact: Timestamp.fromDate(new Date(lastContact)), 
+      lastSeenOnline: lastSeenOnline ? Timestamp.fromDate(new Date(lastSeenOnline)) : Timestamp.now(), 
       createdAt: Timestamp.now(),
     };
     
-    console.log("POST /api/customers: Data being sent to Firestore:", JSON.stringify(newCustomerDataForFirestore, (key, value) => typeof value === 'bigint' ? value.toString() : value, 2).substring(0, 500) + "...");
+    console.log("POST /api/customers: Data being sent to Firestore (first 500 chars of stringified):", JSON.stringify(newCustomerDataForFirestore, (key, value) => typeof value === 'bigint' ? value.toString() : value, 2).substring(0, 500) + "...");
 
     const customersCol = collection(db, 'customers');
     let docRef;
@@ -214,9 +218,9 @@ export async function POST(request: Request) {
         console.error("Error Message:", firestoreError.message);
         console.error("Error Code:", firestoreError.code);
         console.error("Data attempted to save (preview):", JSON.stringify(newCustomerDataForFirestore, null, 2).substring(0, 500) + "...");
-        // console.error("Stack:", firestoreError.stack); // Stack can be very long
+        console.error("Stack:", firestoreError.stack);
         console.error("--- End of Firestore addDoc Error ---");
-        throw firestoreError; // Rethrow to be caught by the outer catch block
+        return NextResponse.json({ message: 'Failed to save customer to database.', error: firestoreError.message, code: firestoreError.code }, { status: 500 });
     }
 
     const createdCustomerResponse: Customer = {
@@ -230,7 +234,7 @@ export async function POST(request: Request) {
         acquisitionSource: newCustomerDataForFirestore.acquisitionSource,
         tags: newCustomerDataForFirestore.tags,
         lastContact: newCustomerDataForFirestore.lastContact.toDate().toISOString(),
-        lastSeenOnline: newCustomerDataForFirestore.lastSeenOnline?.toDate().toISOString(), // lastSeenOnline can be undefined if not provided.
+        lastSeenOnline: newCustomerDataForFirestore.lastSeenOnline?.toDate().toISOString(),
         createdAt: newCustomerDataForFirestore.createdAt.toDate().toISOString(),
     };
 
@@ -238,67 +242,54 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: 'Customer created successfully', customer: createdCustomerResponse }, { status: 201 });
 
   } catch (error: any) {
-    console.error("--- CRITICAL ERROR IN POST /api/customers ---");
+    console.error("--- CRITICAL UNHANDLED ERROR IN POST /api/customers ---");
     console.error("Timestamp:", new Date().toISOString());
 
     let errorMessage = 'An unexpected error occurred while creating the customer.';
-    let errorDetails: Record<string, any> = { rawError: String(error) };
+    let errorDetailsForLogging: Record<string, any> = { rawError: String(error) };
+    let statusCode = 500;
 
     if (error.name === 'FirebaseError' || (error.code && typeof error.code === 'string' && (error.code.startsWith('firebase') || error.code.startsWith('firestore')))) {
         errorMessage = `Firebase error: ${error.message} (Code: ${error.code || 'N/A'})`;
-        errorDetails = { type: 'FirebaseError', code: error.code, firebaseMessage: error.message };
+        errorDetailsForLogging = { type: 'FirebaseError', code: error.code, firebaseMessage: error.message, stack: error.stack };
     } else if (error instanceof z.ZodError) {
         errorMessage = 'Invalid data format for customer creation.';
-        errorDetails = error.flatten().fieldErrors;
+        errorDetailsForLogging = error.flatten();
+        statusCode = 400;
     } else if (error instanceof SyntaxError && error.message.includes("JSON")) {
         errorMessage = 'Invalid JSON payload provided (caught by main try-catch).';
-        errorDetails = { type: 'SyntaxError', syntaxErrorMessage: error.message };
+        errorDetailsForLogging = { type: 'SyntaxError', syntaxErrorMessage: error.message, stack: error.stack };
+        statusCode = 400;
     } else if (error instanceof Error) {
         errorMessage = error.message;
-        errorDetails = { type: 'GenericError', genericErrorMessage: error.message, stackPreview: error.stack?.substring(0, 300) };
+        errorDetailsForLogging = { type: 'GenericError', genericErrorMessage: error.message, stack: error.stack };
     }
     
-    // Sanitize errorDetails for response
-    let safeDetailsForResponse: any = { message: "Details not available or not serializable." };
-    if (errorDetails && typeof errorDetails === 'object') {
-        safeDetailsForResponse = {};
-        for (const key in errorDetails) {
-            if (Object.prototype.hasOwnProperty.call(errorDetails, key)) {
-                const value = errorDetails[key];
-                if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null) {
-                    safeDetailsForResponse[key] = value;
-                } else if (Array.isArray(value) && value.every(item => typeof item === 'string')) {
-                     safeDetailsForResponse[key] = value;
-                } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) { // Handle nested objects (e.g. Zod fieldErrors)
-                    safeDetailsForResponse[key] = {};
-                    for(const nestedKey in value as Record<string, any>) {
-                        if (Object.prototype.hasOwnProperty.call(value, nestedKey)) {
-                            const nestedValue = (value as Record<string, any>)[nestedKey];
-                             if (typeof nestedValue === 'string' || (Array.isArray(nestedValue) && nestedValue.every(item => typeof item === 'string'))) {
-                                safeDetailsForResponse[key][nestedKey] = nestedValue;
-                             } else {
-                                safeDetailsForResponse[key][nestedKey] = "[Non-Serializable Nested Value]";
-                             }
-                        }
-                    }
-                } else {
-                    safeDetailsForResponse[key] = "[Non-Serializable Value]";
-                }
-            }
-        }
-    } else if (typeof errorDetails === 'string') {
-        safeDetailsForResponse = { originalDetails: errorDetails };
-    }
-
     console.error("Error Message:", errorMessage);
-    console.error("Error Details (Processed for logging):", JSON.stringify(safeDetailsForResponse, null, 2));
+    console.error("Error Details (Processed for logging):", JSON.stringify(errorDetailsForLogging, null, 2));
+    
+    if (typeof error === 'object' && error !== null && !(error instanceof Error)) {
+        try {
+            console.error("Full raw error object (attempting stringify):", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+        } catch (e) {
+            console.error("Full raw error object (unserializable):", error);
+        }
+    }
     console.error("--- End of Critical Error in POST /api/customers ---");
 
-    const safeErrorMessageForResponse = typeof errorMessage === 'string' && errorMessage.length < 200 ? errorMessage : 'An unexpected error occurred.';
+    const safeErrorMessageForClientResponse = typeof errorMessage === 'string' && errorMessage.length < 200 ? errorMessage : 'An unexpected server error occurred.';
+    
+    let safeDetailsForClientResponse: any = { message: "Detailed error information logged on server." };
+    if (statusCode === 400 && errorDetailsForLogging.fieldErrors) {
+        safeDetailsForClientResponse = { validationErrors: errorDetailsForLogging.fieldErrors };
+    } else if (errorDetailsForLogging.code) {
+        safeDetailsForClientResponse = { code: errorDetailsForLogging.code };
+    }
+    
     return NextResponse.json({ 
         message: 'Failed to create customer', 
-        error: safeErrorMessageForResponse, 
-        details: safeDetailsForResponse 
-    }, { status: 500 });
+        error: safeErrorMessageForClientResponse, 
+        details: safeDetailsForClientResponse 
+    }, { status: statusCode });
   }
 }

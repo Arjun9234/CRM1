@@ -27,23 +27,28 @@ import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle, AlertDescription as UiAlertDescription } from "@/components/ui/alert"; 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Added for consistency
 
 async function fetchTasks(): Promise<Task[]> {
-  console.log("fetchTasks: Initiating fetch from /api/tasks");
+  console.log("fetchTasks (client): Initiating fetch from /api/tasks");
   const response = await fetch('/api/tasks');
+  
+  const responseText = await response.text();
+
   if (!response.ok) {
     let errorMessage = `Failed to fetch tasks (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
-    const responseText = await response.text().catch(() => "Could not read error response body.");
-    console.error("fetchTasks: Error response text:", responseText.substring(0, 500));
+    let errorDetails: any = null;
+    console.error("fetchTasks (client): Error response text (first 500 chars):", responseText.substring(0, 500));
 
-    if (response.status === 504) {
+    if (response.status === 504) { // Gateway Timeout
         errorMessage = `Failed to fetch tasks: The server took too long to respond (Gateway Timeout). This might be a temporary issue.`;
     } else {
         try {
             const contentType = response.headers.get("content-type");
             if (contentType && contentType.includes("application/json")) {
                 const errorData = JSON.parse(responseText);
-                errorMessage = errorData.message || 'Failed to fetch tasks';
+                errorMessage = errorData.message || errorData.error || errorMessage;
+                errorDetails = errorData.errors || errorData.details || errorData;
             } else {
                  errorMessage = `Server error while fetching tasks: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`;
             }
@@ -52,27 +57,35 @@ async function fetchTasks(): Promise<Task[]> {
              errorMessage = `Failed to parse error response. Server returned status ${response.status}. Response preview: ${responseText.substring(0,100)}`;
         }
     }
-    console.error("fetchTasks: Throwing error:", errorMessage);
-    throw new Error(errorMessage);
+    console.error("fetchTasks (client): Throwing error:", errorMessage, "Details:", errorDetails);
+    const err = new Error(errorMessage);
+    (err as any).details = errorDetails;
+    throw err;
   }
-  const data = await response.json();
-  console.log(`fetchTasks: Successfully fetched ${data.length} tasks.`);
-  return data;
+  try {
+    const data = JSON.parse(responseText);
+    console.log(`fetchTasks (client): Successfully fetched ${data.length} tasks.`);
+    return data;
+  } catch (e) {
+    console.error("Error parsing successful JSON response (fetchTasks):", e, "Body:", responseText.substring(0,500));
+    throw new Error("Failed to parse successful task list from server.");
+  }
 }
 
-async function createTask(payload: TaskCreationPayload): Promise<Task> {
-    console.log("createTask: Initiating POST to /api/tasks with payload:", JSON.stringify(payload).substring(0,300) + "...");
+async function createTask(payload: TaskCreationPayload): Promise<{task: Task}> {
+    console.log("createTask (client): Initiating POST to /api/tasks with payload (first 300 chars):", JSON.stringify(payload).substring(0,300) + "...");
     const response = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
     });
     
-    const responseText = await response.text().catch(() => `Could not read response body. Status: ${response.status}`);
+    const responseText = await response.text();
 
     if (!response.ok) {
         let errorMessage = `Failed to create task (Status: ${response.status} ${response.statusText || 'Unknown Status'})`;
-        console.error("createTask: Error response text:", responseText.substring(0, 500));
+        let errorDetails: any = null;
+        console.error("createTask (client): Error response text (first 500 chars):", responseText.substring(0, 500));
 
         if (response.status === 504) {
             errorMessage = `Failed to create task: The server took too long to respond (Gateway Timeout). Please try again later.`;
@@ -81,34 +94,38 @@ async function createTask(payload: TaskCreationPayload): Promise<Task> {
                 const contentType = response.headers.get("content-type");
                 if (contentType && contentType.includes("application/json")) {
                     const errorData = JSON.parse(responseText);
-                    errorMessage = errorData.message || 'Failed to create task';
-                     if (errorData.errors) {
-                        const fieldErrors = Object.entries(errorData.errors)
-                            .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
-                            .join('; ');
-                        errorMessage = `Invalid data: ${fieldErrors || errorMessage}`;
-                    }
+                    errorMessage = errorData.message || errorData.error || errorMessage;
+                    errorDetails = errorData.errors || errorData.details || errorData;
+                    if (errorDetails && typeof errorDetails !== 'object') errorDetails = { info: errorDetails };
                 } else {
                     errorMessage = `Server error while creating task: ${responseText.substring(0, 200)}${responseText.length > 200 ? '...' : ''}`;
+                    console.error("Full non-JSON error from server (createTask):", responseText);
                 }
             } catch (e) {
                 console.error("Error processing/parsing error response (createTask):", e);
                  errorMessage = `Failed to parse error response. Server returned status ${response.status}. Response preview: ${responseText.substring(0,100)}`;
             }
         }
-        console.error("createTask: Throwing error:", errorMessage);
-        throw new Error(errorMessage);
+        console.error("createTask (client): Throwing error:", errorMessage, "Details:", errorDetails);
+        const err = new Error(errorMessage);
+        (err as any).details = errorDetails;
+        throw err;
     }
-    const result = JSON.parse(responseText);
-    if (!result.task) {
-        console.error("Successful response, but 'task' field missing (createTask):", result);
-        throw new Error("Task creation response was successful, but data format is incorrect.");
+    try {
+        const result = JSON.parse(responseText);
+        if (!result.task || !result.task.id) {
+            console.error("Successful response, but 'task' or 'task.id' field missing (createTask):", result);
+            throw new Error("Task creation response was successful, but data format is incorrect.");
+        }
+        console.log("createTask (client): Successfully created task:", result.task.id);
+        return result; // Return the whole object { message: '...', task: ... }
+    } catch (e: any) {
+        console.error("Error parsing successful JSON response (createTask):", e.message, "Body:", responseText.substring(0,500));
+        throw new Error("Failed to parse successful task creation response from server.");
     }
-    console.log("createTask: Successfully created task:", result.task.id);
-    return result.task;
 }
 
-// Updated schema for form to use string for dates initially
+
 const taskFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
@@ -121,11 +138,17 @@ const taskFormSchema = z.object({
 });
 
 
-const priorityVariantMap: Record<TaskPriority, "default" | "secondary" | "destructive"> = {
+const priorityVariantMap: Record<TaskPriority, "default" | "secondary" | "destructive" | "outline"> = { // Added outline
     High: "destructive",
     Medium: "default", 
     Low: "secondary",
 };
+const priorityBadgeClassMap: Record<TaskPriority, string> = {
+    High: "border-red-500 text-red-700 dark:text-red-400",
+    Medium: "border-yellow-500 text-yellow-700 dark:text-yellow-400",
+    Low: "border-gray-500 text-gray-700 dark:text-gray-400",
+};
+
 
 const statusColorMap: Record<TaskStatus, string> = {
     'To Do': 'bg-blue-500 hover:bg-blue-600',
@@ -142,18 +165,15 @@ const TaskCard = ({ task }: { task: Task }) => {
       <CardHeader>
         <div className="flex justify-between items-start">
           <CardTitle className="text-lg">{task.title}</CardTitle>
-          <Badge variant={priorityVariantMap[task.priority]}
-           className={
-            task.priority === "High" ? "border-red-500 text-red-700 dark:text-red-400" :
-            task.priority === "Medium" ? "border-yellow-500 text-yellow-700 dark:text-yellow-400" :
-            "border-gray-500 text-gray-700 dark:text-gray-400"
-           }
+          <Badge 
+            variant={priorityVariantMap[task.priority] === 'destructive' ? 'destructive' : 'outline'} // Ensure destructive uses its variant, others outline
+            className={priorityBadgeClassMap[task.priority]}
           >
              <Flag className="mr-1 h-3 w-3" /> {task.priority}
           </Badge>
         </div>
         <CardDescription className="flex items-center text-xs text-muted-foreground gap-1 pt-1">
-          <CalendarDays className="h-3 w-3" /> Due: {task.dueDate ? format(new Date(task.dueDate), "MMM dd, yyyy p") : 'N/A'} {/* Changed to include time */}
+          <CalendarDays className="h-3 w-3" /> Due: {task.dueDate ? format(new Date(task.dueDate), "MMM dd, yyyy p") : 'N/A'}
           {isPastDue && <span className="text-red-500 font-semibold ml-1">(Past Due)</span>}
         </CardDescription>
       </CardHeader>
@@ -191,7 +211,7 @@ export default function TasksPage() {
   const queryClient = useQueryClient();
   const [isAddTaskDialogOpen, setIsAddTaskDialogOpen] = useState(false);
 
-  const { data: tasks = [], isLoading, error } = useQuery<Task[]>({
+  const { data: tasks = [], isLoading, error, isFetching } = useQuery<Task[]>({ // Added isFetching
     queryKey: ['tasks'],
     queryFn: fetchTasks,
   });
@@ -201,7 +221,7 @@ export default function TasksPage() {
     defaultValues: {
       title: "",
       description: "",
-      dueDate: formatISO(addDays(new Date(), 7)), // Full ISO string for datetime-local
+      dueDate: formatISO(addDays(new Date(), 7)), 
       priority: "Medium",
       status: "To Do",
       assignedTo: "",
@@ -212,22 +232,33 @@ export default function TasksPage() {
 
   const createTaskMutation = useMutation({
     mutationFn: createTask,
-    onSuccess: (newTask) => {
+    onSuccess: (data) => { // data is now { message: string, task: Task }
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      toast({ title: "Task Added", description: `Task "${newTask.title}" has been successfully added.` });
+      toast({ title: "Task Added", description: data.message || `Task "${data.task.title}" has been successfully added.` });
       setIsAddTaskDialogOpen(false);
       reset();
     },
     onError: (error: Error) => {
-      toast({ title: "Error Adding Task", description: error.message, variant: "destructive", duration: 8000 });
+      const errorDetails = (error as any).details;
+      let description = error.message;
+      if (errorDetails && typeof errorDetails === 'object') {
+          const validationErrors = Object.entries(errorDetails.validationErrors || errorDetails.errors || {})
+                                      .map(([field, msg]) => `${field}: ${Array.isArray(msg) ? msg.join(', ') : msg}`)
+                                      .join('\n');
+          if (validationErrors) {
+              description += `\nDetails:\n${validationErrors}`;
+          } else if (errorDetails.info) {
+             description += `\nInfo: ${errorDetails.info}`;
+          }
+      }
+      toast({ title: "Error Adding Task", description: description, variant: "destructive", duration: 8000 });
     },
   });
 
   const onAddTaskSubmit = (data: z.infer<typeof taskFormSchema>) => {
-    // data.dueDate is already a string from datetime-local input
     const payload: TaskCreationPayload = {
       ...data,
-      tags: data.tags || [], // Already transformed by Zod
+      tags: data.tags || [], 
       project: data.project || undefined, 
     };
     console.log("Submitting task payload:", JSON.stringify(payload).substring(0,300) + "...");
@@ -267,12 +298,12 @@ export default function TasksPage() {
     )
   }
 
-  if (error) {
+  if (error && !isFetching) {
      return (
       <AppLayout>
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
+          <AlertTitle>Error Fetching Tasks</AlertTitle>
           <UiAlertDescription>{(error as Error).message || "Failed to load task data."}</UiAlertDescription>
         </Alert>
       </AppLayout>
@@ -307,6 +338,7 @@ export default function TasksPage() {
                   <div>
                     <Label htmlFor="description">Description</Label>
                     <Controller name="description" control={control} render={({ field }) => <Textarea id="description" {...field} />} />
+                     {formErrors.description && <p className="text-red-500 text-xs mt-1">{formErrors.description.message}</p>}
                   </div>
                   <div>
                     <Label htmlFor="dueDate">Due Date & Time</Label>
@@ -316,33 +348,44 @@ export default function TasksPage() {
                   <div>
                     <Label htmlFor="priority">Priority</Label>
                     <Controller name="priority" control={control} render={({ field }) => (
-                      <select {...field} className="w-full p-2 border rounded-md bg-background">
-                        {(['Low', 'Medium', 'High'] as TaskPriority[]).map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <SelectTrigger id="priority"> <SelectValue placeholder="Select priority" /> </SelectTrigger>
+                        <SelectContent>
+                          {(['Low', 'Medium', 'High'] as TaskPriority[]).map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
                     )} />
+                    {formErrors.priority && <p className="text-red-500 text-xs mt-1">{formErrors.priority.message}</p>}
                   </div>
                   <div>
                     <Label htmlFor="status">Status</Label>
                      <Controller name="status" control={control} render={({ field }) => (
-                      <select {...field} className="w-full p-2 border rounded-md bg-background">
-                        {statusOrder.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <SelectTrigger id="status"> <SelectValue placeholder="Select status" /> </SelectTrigger>
+                        <SelectContent>
+                          {statusOrder.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
                     )} />
+                     {formErrors.status && <p className="text-red-500 text-xs mt-1">{formErrors.status.message}</p>}
                   </div>
                   <div>
                     <Label htmlFor="assignedTo">Assigned To</Label>
                     <Controller name="assignedTo" control={control} render={({ field }) => <Input id="assignedTo" {...field} placeholder="e.g. John Doe" />} />
+                     {formErrors.assignedTo && <p className="text-red-500 text-xs mt-1">{formErrors.assignedTo.message}</p>}
                   </div>
                   <div>
                     <Label htmlFor="project">Project / Context</Label>
                     <Controller name="project" control={control} render={({ field }) => <Input id="project" {...field} placeholder="e.g. Q3 Marketing Launch" />} />
+                     {formErrors.project && <p className="text-red-500 text-xs mt-1">{formErrors.project.message}</p>}
                   </div>
                    <div>
                     <Label htmlFor="tags">Tags (comma-separated)</Label>
                     <Controller name="tags" control={control} render={({ field }) => <Input id="tags" {...field} placeholder="e.g. marketing, report" />} />
+                     {formErrors.tags && <p className="text-red-500 text-xs mt-1">{formErrors.tags.message}</p>}
                   </div>
                   <DialogFooter className="mt-4">
-                    <Button type="button" variant="outline" onClick={() => setIsAddTaskDialogOpen(false)}>Cancel</Button>
+                    <Button type="button" variant="outline" onClick={() => {setIsAddTaskDialogOpen(false); reset();}}>Cancel</Button>
                     <Button type="submit" disabled={createTaskMutation.isPending}>
                       {createTaskMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Save Task

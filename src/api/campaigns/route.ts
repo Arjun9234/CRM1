@@ -99,14 +99,16 @@ export async function GET(request: Request) {
     console.error("Timestamp:", new Date().toISOString());
     console.error("Error Message:", error.message);
     console.error("Error Stack:", error.stack);
-    // Attempt to log the full error object if it's not an Error instance
+    
+    let errorDetailsForLogging: any = { message: error.message, stack: error.stack };
     if (typeof error === 'object' && error !== null && !(error instanceof Error)) {
         try {
-            console.error("Full raw error object (attempting stringify):", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+            errorDetailsForLogging = JSON.parse(JSON.stringify(error, Object.getOwnPropertyNames(error)));
         } catch (e) {
-            console.error("Full raw error object (unserializable):", error);
+             errorDetailsForLogging.unserializableError = String(error);
         }
     }
+    console.error("Full error details (processed for logging):", errorDetailsForLogging);
     console.error("--- End of Critical Error in GET /api/campaigns ---");
     
     return NextResponse.json(
@@ -120,22 +122,24 @@ export async function POST(request: Request) {
   console.log("POST /api/campaigns: Received request at", new Date().toISOString());
   try {
     if (!db) { 
-      console.error("POST /api/campaigns: Firestore database is not initialized. Check Firebase configuration.");
-      return NextResponse.json({ message: 'Database not initialized. Ensure Firebase is correctly configured in .env and project settings.' }, { status: 503 }); // 503 Service Unavailable
+      console.error("POST /api/campaigns: Firestore database is not initialized. Firebase SDK might not have loaded correctly or config is missing/invalid. Check server startup logs for 'Firebase initialization' messages.");
+      return NextResponse.json({ message: 'Database not initialized. Server configuration issue.', error: 'DB_INIT_FAILURE' }, { status: 503 }); // 503 Service Unavailable
     }
-    console.log("POST /api/campaigns: Firestore DB instance seems available.");
+    console.log("POST /api/campaigns: Firestore DB instance appears available.");
 
     let body;
+    const rawBody = await request.text(); // Read as text first for robust parsing & logging
+    console.log("POST /api/campaigns: Raw request body (first 500 chars):", rawBody.substring(0, 500) + (rawBody.length > 500 ? "..." : ""));
+    
     try {
-        const rawBody = await request.text(); // Read as text first for logging
-        console.log("POST /api/campaigns: Raw request body:", rawBody.substring(0, 500) + (rawBody.length > 500 ? "..." : ""));
-        body = JSON.parse(rawBody); // Then parse
+        body = JSON.parse(rawBody); 
     } catch (jsonError: any) {
         console.error("POST /api/campaigns: Invalid JSON in request body:", jsonError.message);
-        return NextResponse.json({ message: 'Invalid JSON payload provided.', error: jsonError.message }, { status: 400 });
+        console.error("POST /api/campaigns: Raw body that failed parsing:", rawBody); // Log the problematic body
+        return NextResponse.json({ message: 'Invalid JSON payload provided.', error: jsonError.message, details: "Request body could not be parsed as JSON." }, { status: 400 });
     }
     
-    console.log("POST /api/campaigns: Parsed request body:", JSON.stringify(body, null, 2).substring(0, 1000) + (JSON.stringify(body, null, 2).length > 1000 ? "..." : ""));
+    console.log("POST /api/campaigns: Parsed request body (first 1000 chars):", JSON.stringify(body, null, 2).substring(0, 1000) + (JSON.stringify(body, null, 2).length > 1000 ? "..." : ""));
     
     const validationResult = campaignCreationSchema.safeParse(body);
     if (!validationResult.success) {
@@ -149,7 +153,7 @@ export async function POST(request: Request) {
 
     const { name, segmentName, rules, ruleLogic, message, status, audienceSize } = validationResult.data;
 
-    const dataToSave = {
+    const dataToSave: CampaignCreationPayload & { createdAt: Timestamp, sentCount: number, failedCount: number } = {
         name,
         rules,
         ruleLogic,
@@ -171,7 +175,7 @@ export async function POST(request: Request) {
         dataToSave.failedCount = 0;
     }
 
-    console.log("POST /api/campaigns: Data being sent to Firestore:", JSON.stringify(dataToSave, (key, value) => typeof value === 'bigint' ? value.toString() : value, 2).substring(0, 500) + (JSON.stringify(dataToSave, null, 2).length > 500 ? "..." : ""));
+    console.log("POST /api/campaigns: Data being sent to Firestore (first 500 chars of stringified):", JSON.stringify(dataToSave, (key, value) => typeof value === 'bigint' ? value.toString() : value, 2).substring(0, 500) + (JSON.stringify(dataToSave, null, 2).length > 500 ? "..." : ""));
 
 
     const campaignsCol = collection(db, 'campaigns');
@@ -186,9 +190,12 @@ export async function POST(request: Request) {
         console.error("Error Message:", firestoreError.message);
         console.error("Error Code:", firestoreError.code);
         console.error("Data attempted to save (preview):", JSON.stringify(dataToSave, null, 2).substring(0, 500) + "...");
-        // console.error("Stack:", firestoreError.stack); // Stack can be very long
+        console.error("Stack:", firestoreError.stack); 
         console.error("--- End of Firestore addDoc Error ---");
-        throw firestoreError; // Rethrow to be caught by the outer catch block
+        // Do not rethrow; let the generic error handler below catch it after logging.
+        // This ensures that if the error is from Firestore, it's logged specifically.
+        // We will return a 500 from the main catch block.
+         return NextResponse.json({ message: 'Failed to save campaign to database.', error: firestoreError.message, code: firestoreError.code }, { status: 500 });
     }
     
     const createdCampaignResponse: Campaign = {
@@ -210,70 +217,45 @@ export async function POST(request: Request) {
       console.log("POST /api/campaigns: Campaign added to in-memory store.");
     } catch (inMemoryError: any) {
       console.error("Error adding campaign to in-memory store after Firebase success (POST /api/campaigns):", inMemoryError.message);
+      // Non-critical for the response, but good to log.
     }
     
     console.log("POST /api/campaigns: Successfully created campaign, returning 201 response.");
     return NextResponse.json(createdCampaignResponse, { status: 201 });
 
   } catch (error: any) {
-    console.error("--- CRITICAL ERROR IN POST /api/campaigns ---");
+    console.error("--- CRITICAL UNHANDLED ERROR IN POST /api/campaigns ---");
     console.error("Timestamp:", new Date().toISOString());
     
     let errorMessage = 'An unexpected error occurred while creating the campaign.';
-    let errorDetails: Record<string, any> = { rawError: String(error) };
+    let errorDetailsForLogging: Record<string, any> = { rawError: String(error) };
+    let statusCode = 500;
 
     if (error.name === 'FirebaseError' || (error.code && typeof error.code === 'string' && (error.code.startsWith('firebase') || error.code.startsWith('firestore')) )) {
         errorMessage = `Firebase error: ${error.message} (Code: ${error.code || 'N/A'})`;
-        errorDetails = { type: 'FirebaseError', code: error.code, firebaseMessage: error.message };
+        errorDetailsForLogging = { type: 'FirebaseError', code: error.code, firebaseMessage: error.message, stack: error.stack };
     } else if (error instanceof z.ZodError) {
         errorMessage = 'Invalid data format for campaign creation.';
-        errorDetails = error.flatten().fieldErrors;
+        errorDetailsForLogging = error.flatten(); // Zod provides good error structuring
+        statusCode = 400;
     } else if (error instanceof SyntaxError && error.message.includes("JSON")) {
+        // This should have been caught earlier by the specific JSON.parse try-catch
         errorMessage = 'Invalid JSON payload provided (caught by main try-catch).';
-        errorDetails = { type: 'SyntaxError', syntaxErrorMessage: error.message };
+        errorDetailsForLogging = { type: 'SyntaxError', syntaxErrorMessage: error.message, stack: error.stack };
+        statusCode = 400;
     } else if (error instanceof Error) {
         errorMessage = error.message;
-        errorDetails = { type: 'GenericError', genericErrorMessage: error.message, stackPreview: error.stack?.substring(0, 300) };
+        errorDetailsForLogging = { type: 'GenericError', genericErrorMessage: error.message, stack: error.stack };
     } else if (typeof error === 'string') {
         errorMessage = error;
-        errorDetails = { type: 'StringError', rawErrorString: error };
+        errorDetailsForLogging = { type: 'StringError', rawErrorString: error };
     }
     
-    // Sanitize errorDetails for response
-    let safeDetailsForResponse: any = { message: "Details not available or not serializable." };
-    if (errorDetails && typeof errorDetails === 'object') {
-        safeDetailsForResponse = {};
-        for (const key in errorDetails) {
-            if (Object.prototype.hasOwnProperty.call(errorDetails, key)) {
-                const value = errorDetails[key];
-                if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null) {
-                    safeDetailsForResponse[key] = value;
-                } else if (Array.isArray(value) && value.every(item => typeof item === 'string')) {
-                     safeDetailsForResponse[key] = value;
-                } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                    safeDetailsForResponse[key] = {};
-                    for(const nestedKey in value as Record<string, any>) {
-                        if (Object.prototype.hasOwnProperty.call(value, nestedKey)) {
-                            const nestedValue = (value as Record<string, any>)[nestedKey];
-                             if (typeof nestedValue === 'string' || (Array.isArray(nestedValue) && nestedValue.every(item => typeof item === 'string'))) {
-                                safeDetailsForResponse[key][nestedKey] = nestedValue;
-                             } else {
-                                safeDetailsForResponse[key][nestedKey] = "[Non-Serializable Nested Value]";
-                             }
-                        }
-                    }
-                } else {
-                    safeDetailsForResponse[key] = "[Non-Serializable Value]";
-                }
-            }
-        }
-    } else if (typeof errorDetails === 'string') {
-        safeDetailsForResponse = { originalDetails: errorDetails };
-    }
-    
+    // Log the structured error details
     console.error("Error Message:", errorMessage);
-    console.error("Error Details (Processed for logging):", JSON.stringify(safeDetailsForResponse, null, 2));
+    console.error("Error Details (Processed for logging):", JSON.stringify(errorDetailsForLogging, null, 2));
     
+    // Log the full raw error object if it's not a standard Error instance for deeper inspection
     if (typeof error === 'object' && error !== null && !(error instanceof Error)) {
         try {
             console.error("Full raw error object (attempting stringify):", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
@@ -283,9 +265,17 @@ export async function POST(request: Request) {
     }
     console.error("--- End of Critical Error in POST /api/campaigns ---");
     
-    const safeErrorMessageForResponse = typeof errorMessage === 'string' && errorMessage.length < 200 ? errorMessage : 'An unexpected error occurred.';
+    const safeErrorMessageForClientResponse = typeof errorMessage === 'string' && errorMessage.length < 200 ? errorMessage : 'An unexpected server error occurred.';
 
-    console.log("POST /api/campaigns: Returning error response:", { message: 'Failed to create campaign', error: safeErrorMessageForResponse });
-    return NextResponse.json({ message: 'Failed to create campaign', error: safeErrorMessageForResponse, details: safeDetailsForResponse }, { status: 500 });
+    // Construct a safe details object for the client, avoiding overly verbose or sensitive info
+    let safeDetailsForClientResponse: any = { message: "Detailed error information logged on server." };
+    if (statusCode === 400 && errorDetailsForLogging.fieldErrors) { // Specifically for Zod errors
+        safeDetailsForClientResponse = { validationErrors: errorDetailsForLogging.fieldErrors };
+    } else if (errorDetailsForLogging.code) { // For Firebase or other coded errors
+        safeDetailsForClientResponse = { code: errorDetailsForLogging.code };
+    }
+
+    console.log(`POST /api/campaigns: Returning error response (status ${statusCode}):`, { message: 'Failed to create campaign', error: safeErrorMessageForClientResponse });
+    return NextResponse.json({ message: 'Failed to create campaign', error: safeErrorMessageForClientResponse, details: safeDetailsForClientResponse }, { status: statusCode });
   }
 }

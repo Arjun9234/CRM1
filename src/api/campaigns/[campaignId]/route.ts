@@ -23,7 +23,7 @@ const campaignUpdateSchema = z.object({
   audienceSize: z.number().min(0).optional(),
   sentCount: z.number().min(0).optional(),
   failedCount: z.number().min(0).optional(),
-}).partial(); // All fields are optional for PUT
+}).partial(); 
 
 export async function GET(
   request: Request,
@@ -46,7 +46,7 @@ export async function GET(
         return NextResponse.json(dummyCampaign);
       }
       console.error(`GET /api/campaigns/${campaignId}: Firestore DB not initialized and dummy campaign not found.`);
-      return NextResponse.json({ message: 'Database not available and campaign not found in fallback store' }, { status: 503 });
+      return NextResponse.json({ message: 'Database not available and campaign not found in fallback store', error: 'DB_UNAVAILABLE' }, { status: 503 });
     }
     
     console.log(`GET /api/campaigns/${campaignId}: Firestore DB instance available. Fetching document...`);
@@ -76,7 +76,7 @@ export async function GET(
       console.log(`GET /api/campaigns/${campaignId}: Campaign not found in Firebase. Checking dummy store.`);
       const dummyCampaign = findInMemoryDummyCampaign(campaignId);
       if (dummyCampaign) {
-        console.log(`GET /api/campaigns/${campaignId}: Found in-memory dummy campaign.`);
+        console.log(`GET /api/campaigns/${campaignId}: Found in-memory dummy campaign as fallback.`);
         return NextResponse.json(dummyCampaign);
       }
       console.warn(`GET /api/campaigns/${campaignId}: Campaign not found in Firebase or dummy store.`);
@@ -88,16 +88,16 @@ export async function GET(
     console.error("Error Message:", error.message);
     console.error("Error Stack Preview:", error.stack?.substring(0, 300));
     console.error("--- End of GET Error ---");
-
-    console.warn(`GET /api/campaigns/${campaignId}: Error during Firebase fetch. Attempting fallback to dummy data.`);
+    
+    // Attempt fallback even on general error, as a last resort
     const dummyCampaign = findInMemoryDummyCampaign(campaignId);
     if (dummyCampaign) {
-      console.log(`GET /api/campaigns/${campaignId}: Found in-memory dummy campaign after Firebase error.`);
+      console.log(`GET /api/campaigns/${campaignId}: Found in-memory dummy campaign after general Firebase error.`);
       return NextResponse.json(dummyCampaign);
     }
     
     const errorMessage = error.message || 'Unknown error';
-    return NextResponse.json({ message: 'Failed to fetch campaign', error: errorMessage }, { status: 500 });
+    return NextResponse.json({ message: 'Failed to fetch campaign', error: errorMessage, code: error.code || 'UNKNOWN_SERVER_ERROR' }, { status: 500 });
   }
 }
 
@@ -112,16 +112,28 @@ export async function PUT(
     console.warn(`PUT /api/campaigns/[campaignId]: Campaign ID is missing.`);
     return NextResponse.json({ message: 'Campaign ID is required' }, { status: 400 });
   }
+  
+  if (!db) {
+      console.error(`PUT /api/campaigns/${campaignId}: Firestore DB not initialized. Update cannot proceed.`);
+      const updatedDummyCampaign = updateInMemoryDummyCampaign(campaignId, {} as CampaignUpdatePayload /* attempt with empty if logic allows */);
+      if(updatedDummyCampaign) {
+         console.warn(`PUT /api/campaigns/${campaignId}: DB unavailable, attempted dummy update.`);
+         return NextResponse.json(updatedDummyCampaign); // Or a more specific error if dummy update not suitable without payload
+      }
+      return NextResponse.json({ message: 'Database not available, cannot update campaign', error: 'DB_UNAVAILABLE' }, { status: 503 });
+  }
+
 
   let parsedBody: any;
+  const rawBody = await request.text();
+  console.log(`PUT /api/campaigns/${campaignId}: Raw request body (first 500 chars):`, rawBody.substring(0, 500) + (rawBody.length > 500 ? "..." : ""));
   try {
-    const rawBody = await request.text();
-    console.log(`PUT /api/campaigns/${campaignId}: Raw request body:`, rawBody.substring(0, 500) + (rawBody.length > 500 ? "..." : ""));
     parsedBody = JSON.parse(rawBody);
-    console.log(`PUT /api/campaigns/${campaignId}: Parsed request body:`, JSON.stringify(parsedBody).substring(0, 500) + "...");
+    console.log(`PUT /api/campaigns/${campaignId}: Parsed request body (first 500 chars of stringified):`, JSON.stringify(parsedBody).substring(0, 500) + "...");
   } catch (e: any) {
     console.error(`PUT /api/campaigns/${campaignId}: Invalid JSON body. Error: ${e.message}`);
-    return NextResponse.json({ message: 'Invalid JSON body', error: e.message }, { status: 400 });
+    console.error(`PUT /api/campaigns/${campaignId}: Raw body that failed parsing:`, rawBody);
+    return NextResponse.json({ message: 'Invalid JSON body', error: e.message, details: "Request body could not be parsed as JSON." }, { status: 400 });
   }
 
   const validationResult = campaignUpdateSchema.safeParse(parsedBody);
@@ -135,17 +147,6 @@ export async function PUT(
   const validatedDataToUpdate: CampaignUpdatePayload = validationResult.data;
 
   try {
-    if (!db) {
-        console.warn(`PUT /api/campaigns/${campaignId}: Firestore DB not initialized. Attempting to update dummy data only.`);
-        const updatedDummyCampaign = updateInMemoryDummyCampaign(campaignId, validatedDataToUpdate);
-        if (updatedDummyCampaign) {
-            console.log(`PUT /api/campaigns/${campaignId}: Updated in-memory dummy campaign as DB not available.`);
-            return NextResponse.json(updatedDummyCampaign);
-        }
-        console.error(`PUT /api/campaigns/${campaignId}: Firestore DB not initialized and dummy campaign not found for update.`);
-        return NextResponse.json({ message: 'Database not available and campaign not found in fallback store for update' }, { status: 503 });
-    }
-    
     console.log(`PUT /api/campaigns/${campaignId}: Firestore DB instance available. Checking document existence...`);
     const campaignDocRef = doc(db, 'campaigns', campaignId);
     const campaignDocSnapshot = await getDoc(campaignDocRef);
@@ -174,21 +175,25 @@ export async function PUT(
         Object.entries(dataForFirebaseUpdate).filter(([_, v]) => v !== undefined)
       );
 
-      console.log(`PUT /api/campaigns/${campaignId}: Attempting to update document in Firebase with data:`, JSON.stringify(cleanedDataForFirebase).substring(0, 300) + "...");
+      console.log(`PUT /api/campaigns/${campaignId}: Attempting to update document in Firebase with data (first 300 chars):`, JSON.stringify(cleanedDataForFirebase).substring(0, 300) + "...");
       await updateDoc(campaignDocRef, cleanedDataForFirebase);
       console.log(`PUT /api/campaigns/${campaignId}: Document updated in Firebase.`);
       
-      updateInMemoryDummyCampaign(campaignId, validatedDataToUpdate);
-      console.log(`PUT /api/campaigns/${campaignId}: In-memory store updated for campaign ${campaignId}.`);
+      const updatedInMemoryCampaign = updateInMemoryDummyCampaign(campaignId, validatedDataToUpdate);
+      if(updatedInMemoryCampaign) {
+          console.log(`PUT /api/campaigns/${campaignId}: In-memory store updated for campaign ${campaignId}.`);
+      } else {
+          console.warn(`PUT /api/campaigns/${campaignId}: In-memory store update FAILED for campaign ${campaignId}, but Firebase was updated.`);
+      }
       
-      const updatedDocSnapshot = await getDoc(campaignDocRef); 
-      const updatedDocData = updatedDocSnapshot.data();
+      const updatedDocSnapshotFirebase = await getDoc(campaignDocRef); 
+      const updatedDocDataFirebase = updatedDocSnapshotFirebase.data();
       
       const responseData = { 
-        id: updatedDocSnapshot.id,
-        ...updatedDocData, 
-        createdAt: (updatedDocData?.createdAt as Timestamp)?.toDate().toISOString(), 
-        updatedAt: (updatedDocData?.updatedAt as Timestamp)?.toDate().toISOString()
+        id: updatedDocSnapshotFirebase.id,
+        ...updatedDocDataFirebase, 
+        createdAt: (updatedDocDataFirebase?.createdAt as Timestamp)?.toDate().toISOString(), 
+        updatedAt: (updatedDocDataFirebase?.updatedAt as Timestamp)?.toDate().toISOString()
       };
       console.log(`PUT /api/campaigns/${campaignId}: Successfully updated campaign. Returning response.`);
       return NextResponse.json(responseData);
@@ -213,12 +218,9 @@ export async function PUT(
     console.error("Error Message:", error.message);
     console.error("Error Stack Preview:", error.stack?.substring(0, 300));
     
-    let isFirebaseSpecificError = true; 
-    if (error.message.toLowerCase().includes("not found")) {
-        isFirebaseSpecificError = false; 
-    }
-
-    if (isFirebaseSpecificError) {
+    // Fallback attempt only if not a 'not found' error and DB was supposed to be available
+    const isNotFound = error.message.toLowerCase().includes("not found");
+    if (!isNotFound && db) { 
         try {
             const cleanedDataForDummyStoreFallback = Object.fromEntries(
                 Object.entries(validatedDataToUpdate).filter(([_, v]) => v !== undefined)
@@ -236,7 +238,7 @@ export async function PUT(
     
     const errorMessage = error.message || 'Unknown error during update';
     console.error(`--- End of PUT Error for ${campaignId} ---`);
-    return NextResponse.json({ message: 'Failed to update campaign', error: errorMessage }, { status: 500 });
+    return NextResponse.json({ message: 'Failed to update campaign', error: errorMessage, code: error.code || 'UNKNOWN_SERVER_ERROR' }, { status: 500 });
   }
 }
 
@@ -251,18 +253,18 @@ export async function DELETE(
     console.warn(`DELETE /api/campaigns/[campaignId]: Campaign ID is missing.`);
     return NextResponse.json({ message: 'Campaign ID is required' }, { status: 400 });
   }
-
-  try {
-    if (!db) {
+  
+  if (!db) {
       console.warn(`DELETE /api/campaigns/${campaignId}: Firestore DB not initialized. Attempting to delete from dummy data only.`);
       if (deleteInMemoryDummyCampaign(campaignId)) {
         console.log(`DELETE /api/campaigns/${campaignId}: Deleted from in-memory store as DB not available.`);
         return NextResponse.json({ message: 'Campaign deleted successfully from in-memory store (DB unavailable)' });
       }
       console.error(`DELETE /api/campaigns/${campaignId}: Firestore DB not initialized and dummy campaign not found for deletion.`);
-      return NextResponse.json({ message: 'Database not available and campaign not found in fallback store for deletion' }, { status: 503 });
-    }
+      return NextResponse.json({ message: 'Database not available and campaign not found in fallback store for deletion', error: 'DB_UNAVAILABLE_OR_NOT_FOUND' }, { status: 503 });
+  }
 
+  try {
     console.log(`DELETE /api/campaigns/${campaignId}: Firestore DB instance available. Checking document existence...`);
     const campaignDocRef = doc(db, 'campaigns', campaignId);
     const campaignDoc = await getDoc(campaignDocRef);
@@ -291,13 +293,13 @@ export async function DELETE(
     console.error("Error Stack Preview:", error.stack?.substring(0, 300));
     
     console.warn(`DELETE /api/campaigns/${campaignId}: Error during Firebase delete. Attempting fallback to delete from dummy data.`);
-    if (deleteInMemoryDummyCampaign(campaignId)) {
+    if (deleteInMemoryDummyCampaign(campaignId)) { // This might succeed if the error was Firebase-specific but dummy existed
         console.warn(`DELETE /api/campaigns/${campaignId}: Deleted from in-memory dummy data as fallback after Firebase error.`);
         return NextResponse.json({ message: 'Campaign deleted successfully from in-memory store after Firebase error' });
     }
     
     const errorMessage = error.message || 'Unknown error';
     console.error(`--- End of DELETE Error for ${campaignId} ---`);
-    return NextResponse.json({ message: 'Failed to delete campaign', error: errorMessage }, { status: 500 });
+    return NextResponse.json({ message: 'Failed to delete campaign', error: errorMessage, code: error.code || 'UNKNOWN_SERVER_ERROR' }, { status: 500 });
   }
 }
